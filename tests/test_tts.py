@@ -44,11 +44,11 @@ def make_job(segments=None) -> JobState:
     )
 
 
-def make_api_error(status_code: int = 429, retry_after: str | None = None) -> MagicMock:
-    mock_err = MagicMock(spec=ApiError)
-    mock_err.status_code = status_code
-    mock_err.headers = {"Retry-After": retry_after} if retry_after else {}
-    return mock_err
+def make_api_error(status_code: int = 429, retry_after: str | None = None) -> ApiError:
+    """Create a real ApiError instance (must derive from BaseException to be raised)."""
+    headers = {"Retry-After": retry_after} if retry_after else {}
+    err = ApiError(status_code=status_code, headers=headers)
+    return err
 
 
 def fake_pcm_bytes(n_frames: int = 22050) -> bytes:
