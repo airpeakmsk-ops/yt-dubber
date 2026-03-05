@@ -17,6 +17,7 @@ class Settings:
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
     output_dir:          str = "./output"
     claude_model:        str = "claude-sonnet-4-5"
+    translation_batch_size: int = 20
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -26,6 +27,7 @@ class Settings:
             elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"),
             output_dir=os.getenv("OUTPUT_DIR", "./output"),
             claude_model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5"),
+            translation_batch_size=int(os.getenv("TRANSLATION_BATCH_SIZE", "20")),
         )
 
 
