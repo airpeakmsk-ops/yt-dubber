@@ -80,7 +80,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — config.py update (3 new ElevenLabs fields) + checkpoint.py TDD (save/load with StrEnum reconstruction)
+- [x] 04-01-PLAN.md — config.py update (3 new ElevenLabs fields) + checkpoint.py TDD (save/load with StrEnum reconstruction) ✓ 2026-03-05
 - [ ] 04-02-PLAN.md — tts.py TDD (should_synthesize + synthesize_all with retry, silence, resume, checkpointing)
 
 ### Phase 5: Audio Assembly
@@ -114,6 +114,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Scaffold | 2/2 | ✓ Complete | 2026-03-05 |
 | 2. Subtitle Extraction | 0/TBD | Not started | - |
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
-| 4. TTS Synthesis | 0/2 | In progress | - |
+| 4. TTS Synthesis | 1/2 | In progress | - |
 | 5. Audio Assembly | 0/TBD | Not started | - |
 | 6. CLI + Slash Command | 0/TBD | Not started | - |
