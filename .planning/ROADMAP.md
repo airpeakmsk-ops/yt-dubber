@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Scaffold** - Project structure, config loading, shared data models, and pyproject.toml ✓ 2026-03-05
 - [ ] **Phase 2: Subtitle Extraction** - yt-dlp subtitle download with deduplication and availability check
 - [ ] **Phase 3: Translation + DOCX** - Claude API translation, DOCX export, and user-edited DOCX read-back
-- [ ] **Phase 4: TTS Synthesis** - ElevenLabs per-segment synthesis with skip logic and resume support
+- [x] **Phase 4: TTS Synthesis** - ElevenLabs per-segment synthesis with skip logic and resume support (completed 2026-03-05)
 - [ ] **Phase 5: Audio Assembly** - Time-stretching, absolute-position track assembly, and MP3 export
 - [ ] **Phase 6: CLI + Slash Command** - Two-command CLI packaging and `/translate-video` Claude Code skill
 
@@ -114,6 +114,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Scaffold | 2/2 | ✓ Complete | 2026-03-05 |
 | 2. Subtitle Extraction | 0/TBD | Not started | - |
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
-| 4. TTS Synthesis | 1/2 | In progress | - |
+| 4. TTS Synthesis | 2/2 | Complete   | 2026-03-05 |
 | 5. Audio Assembly | 0/TBD | Not started | - |
 | 6. CLI + Slash Command | 0/TBD | Not started | - |

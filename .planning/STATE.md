@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-03-05T20:49:00Z"
+last_updated: "2026-03-05T21:11:00Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 4
+  total_plans: 8
+  completed_plans: 5
 ---
 
 # State: YT-Dubber
@@ -19,16 +19,16 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 See: .planning/ROADMAP.md (created 2026-03-04)
 
 **Core value:** A Russian speaker can get a synchronized dubbed audio track for any Japanese YouTube video — with a human review step before any audio is generated, ensuring translation quality.
-**Current focus:** Milestone v1.0 — Phase 4: TTS Synthesis (plan 01 complete)
+**Current focus:** Milestone v1.0 — Phase 4: TTS Synthesis (plan 02 complete — all Phase 4 plans done)
 
 ## Current Position
 
 Phase: 4 of 6 (TTS Synthesis)
-Plan: 1 of N in current phase (04-01 complete)
-Status: Phase 4 plan 01 complete — checkpoint.save/load implemented, config.py extended with ElevenLabs fields
-Last activity: 2026-03-05 — Phase 4 plan 01 executed: config.py (3 new ElevenLabs fields + VASKO voice default), checkpoint.py (save/load with StrEnum reconstruction), tests/test_checkpoint.py (11 TDD tests, all green). All 31 suite tests pass.
+Plan: 2 of 2 in current phase (04-02 complete — Phase 4 DONE)
+Status: Phase 4 complete — tts.py implemented (should_synthesize + synthesize_all), 30/30 TTS tests GREEN, 61/61 full suite GREEN
+Last activity: 2026-03-05 — Phase 4 plan 02 executed: tts.py full TTS engine (ElevenLabs synthesis, silence generation, exponential-backoff retry, per-segment checkpointing, resume support), tests/test_tts.py (30 TDD tests). All 61 suite tests pass.
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -42,7 +42,7 @@ Progress: [█████░░░░░] 50%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 03-translation-docx | 2 | 7 min | 3.5 min |
-| 04-tts-synthesis | 1 | 8 min | 8 min |
+| 04-tts-synthesis | 2 | 13 min | 6.5 min |
 
 *Updated after each plan completion*
 
@@ -67,6 +67,9 @@ Progress: [█████░░░░░] 50%
 - SegmentStatus must be reconstructed explicitly via SegmentStatus(s["status"]) on load — JobState(**data) without reconstruction silently accepts plain dicts
 - VASKO voice ID Vl27Cllkuw8BhyPqus2n replaces Rachel (21m00Tcm4TlvDq8ikWAM) as default
 - eleven_multilingual_v2 with stability=0.85, similarity_boost=0.80 chosen as ElevenLabs defaults
+- [Phase 04-tts-synthesis]: synthesize_all extended with optional job + checkpoint_path params (backward compatible) to enable checkpoint.save() without breaking stub callers
+- [Phase 04-tts-synthesis]: make_api_error must return real ApiError instance (not MagicMock) — MagicMock cannot be raised in Python 3.14 mock side_effect
+- [Phase 04-tts-synthesis]: Retry-After header access wrapped in try/except AttributeError to handle None headers from SDK gracefully
 
 ### Pending Todos
 
@@ -80,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 04-01-PLAN.md — checkpoint.save/load implemented, config.py extended with ElevenLabs fields, 11/11 checkpoint TDD tests green, 31/31 suite tests pass
+Stopped at: Completed 04-02-PLAN.md — tts.py implemented, 30/30 TTS tests GREEN, 61/61 full suite GREEN
 Resume file: None

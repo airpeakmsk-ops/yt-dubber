@@ -19,8 +19,8 @@
 
 ### TTS
 
-- [ ] **TTS-01**: Tool generates Russian TTS audio per subtitle segment via ElevenLabs (with retry on rate limit)
-- [ ] **TTS-02**: Segments with no meaningful text (symbols only, < 3 alpha chars) are skipped — silence inserted
+- [x] **TTS-01**: Tool generates Russian TTS audio per subtitle segment via ElevenLabs (with retry on rate limit)
+- [x] **TTS-02**: Segments with no meaningful text (symbols only, < 3 alpha chars) are skipped — silence inserted
 - [x] **TTS-03**: Progress is saved after each TTS segment (supports `--resume` on failure)
 
 ### Audio
@@ -68,8 +68,8 @@
 | TRAN-01 | Phase 3 | Complete |
 | TRAN-02 | Phase 3 | Complete |
 | TRAN-03 | Phase 3 | Complete |
-| TTS-01 | Phase 4 | Pending |
-| TTS-02 | Phase 4 | Pending |
+| TTS-01 | Phase 4 | Complete |
+| TTS-02 | Phase 4 | Complete |
 | TTS-03 | Phase 4 | Complete |
 | AUDI-01 | Phase 5 | Pending |
 | AUDI-02 | Phase 5 | Pending |
