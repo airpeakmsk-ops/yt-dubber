@@ -362,8 +362,11 @@ class TestAssembleTrack:
 
     def test_default_output_path_uses_video_id(self, tmp_path: Path, monkeypatch) -> None:
         """Without output_path, file is named {video_id}_dubbed_ru.mp3 in settings.output_dir."""
-        import yt_dubber.config as cfg_module
-        monkeypatch.setattr(cfg_module.settings, "output_dir", str(tmp_path), raising=False)
+        # Settings is a frozen dataclass — patch the module-level attribute in merger instead
+        import types
+        import yt_dubber.merger as merger_module
+        fake_settings = types.SimpleNamespace(output_dir=str(tmp_path))
+        monkeypatch.setattr(merger_module, "settings", fake_settings)
 
         wav_file = tmp_path / "seg_0.wav"
         wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
