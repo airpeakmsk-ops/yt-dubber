@@ -92,7 +92,11 @@ Plans:
   2. The final MP3 track is named `<video_id>_dubbed_ru.mp3` and plays at the correct total length matching the source video's subtitle span
   3. Speech in the final track does not drift ahead of or behind the corresponding original video timestamp — verified by spot-checking start time of segment 1, 50, and the last segment
   4. Segments that failed TTS synthesis produce silence at the correct timecode rather than displacing adjacent speech
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — pyproject.toml update (lameenc) + audio_sync.py TDD (stretch_to_duration with ratio clamp, silence pad, pyrubberband fallback)
+- [ ] 05-02-PLAN.md — merger.py TDD (assemble_track with numpy canvas, absolute timecodes, lameenc MP3 output)
 
 ### Phase 6: CLI + Slash Command
 **Goal**: Users can run the full pipeline through two named CLI subcommands and through a `/translate-video` Claude Code slash command that orchestrates both steps end-to-end
@@ -115,5 +119,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Subtitle Extraction | 0/TBD | Not started | - |
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
 | 4. TTS Synthesis | 2/2 | Complete   | 2026-03-05 |
-| 5. Audio Assembly | 0/TBD | Not started | - |
+| 5. Audio Assembly | 0/2 | Not started | - |
 | 6. CLI + Slash Command | 0/TBD | Not started | - |
