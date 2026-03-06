@@ -19,6 +19,7 @@ dependencies = [
     "soundfile>=0.12.0",
     "numpy>=1.24.0",
     "chardet>=5.0.0",
+    "lameenc>=1.7.0",
 ]
 
 [project.optional-dependencies]
