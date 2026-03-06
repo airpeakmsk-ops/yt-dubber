@@ -106,7 +106,12 @@ Plans:
   1. `yt-dubber translate <url>` runs Phase 1 of the pipeline (extraction + translation + DOCX export) and exits with a clear message pointing to the output DOCX
   2. `yt-dubber dub <docx>` runs Phase 2 of the pipeline (DOCX read-back + TTS + assembly) and exits with a clear message pointing to the output MP3
   3. The `/translate-video` Claude Code slash command accepts a YouTube URL, calls `yt-dubber translate`, waits for the user to review the DOCX, then calls `yt-dubber dub` — all within one Claude Code session
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — extractor.py TDD (has_japanese_subtitles + download_subtitles + extract_segments via yt-dlp Python API)
+- [ ] 06-02-PLAN.md — cli.py wiring TDD (translate + dub command bodies, CliRunner tests, checkpoint integration)
+- [ ] 06-03-PLAN.md — .claude/commands/translate-video.md (Claude Code slash command with $ARGUMENTS, review gate, error stop)
 
 ## Progress
 
@@ -120,4 +125,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
 | 4. TTS Synthesis | 2/2 | Complete   | 2026-03-05 |
 | 5. Audio Assembly | 2/2 | ✓ Complete | 2026-03-06 |
-| 6. CLI + Slash Command | 0/TBD | Not started | - |
+| 6. CLI + Slash Command | 0/3 | Not started | - |
