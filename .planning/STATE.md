@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-06T06:42:08.338Z"
+status: in_progress
+last_updated: "2026-03-06T06:56:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # State: YT-Dubber
@@ -19,23 +19,23 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 See: .planning/ROADMAP.md (created 2026-03-04)
 
 **Core value:** A Russian speaker can get a synchronized dubbed audio track for any Japanese YouTube video — with a human review step before any audio is generated, ensuring translation quality.
-**Current focus:** Milestone v1.0 — Phase 5: Audio Assembly (plan 01 complete — stretch_to_duration implemented)
+**Current focus:** Milestone v1.0 — Phase 5: Audio Assembly COMPLETE (both plans done)
 
 ## Current Position
 
-Phase: 5 of 6 (Audio Assembly)
-Plan: 1 of 2 in current phase (05-01 complete)
-Status: Phase 5 plan 01 complete — audio_sync.py stretch_to_duration implemented, 17/17 new tests GREEN, 86/86 full suite GREEN
-Last activity: 2026-03-06 — Phase 5 plan 01 executed: stretch_to_duration() with librosa/pyrubberband time-stretch, RATIO_MIN/MAX clamping, exact trim+pad, tests/test_assembly.py (17 TDD tests). All 86 suite tests pass.
+Phase: 5 of 5 (Audio Assembly — complete)
+Plan: 2 of 2 in current phase (05-02 complete)
+Status: Phase 5 complete — assemble_track() implemented, 15/15 new TestAssembleTrack tests GREEN, 101/101 full suite GREEN
+Last activity: 2026-03-06 — Phase 5 plan 02 executed: merger.py assemble_track() with NumPy int16 canvas, lameenc MP3 encoding with WAV fallback for cp314. All 101 suite tests pass.
 
-Progress: [███████░░░] 70%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 4.5 min
-- Total execution time: 0.18 hours
+- Total plans completed: 7
+- Average duration: 5.1 min
+- Total execution time: 0.60 hours
 
 **By Phase:**
 
@@ -43,7 +43,7 @@ Progress: [███████░░░] 70%
 |-------|-------|-------|----------|
 | 03-translation-docx | 2 | 7 min | 3.5 min |
 | 04-tts-synthesis | 2 | 13 min | 6.5 min |
-| 05-audio-assembly | 1 | 8 min | 8 min |
+| 05-audio-assembly | 2 | 20 min | 10 min |
 
 *Updated after each plan completion*
 
@@ -74,6 +74,9 @@ Progress: [███████░░░] 70%
 - [Phase 05-audio-assembly]: librosa primary time-stretch with pyrubberband fallback on any Exception — avoids Windows rubberband.exe dependency
 - [Phase 05-audio-assembly]: Exact trim+pad to int(target_ms * 22050 / 1000) samples ensures zero-drift audio assembly in merger
 - [Phase 05-audio-assembly]: lameenc added to required deps (not optional) — needed by merger.py; cp314 wheels not yet available on PyPI
+- [Phase 05-audio-assembly plan 02]: lameenc fallback to stdlib wave output — _encode_mp3() uses _LAMEENC_AVAILABLE flag set at import time; WAV output when lameenc unavailable with WARN
+- [Phase 05-audio-assembly plan 02]: NumPy int16 canvas slice-assign (not +=) — no int16 overflow risk, segments don't overlap by design
+- [Phase 05-audio-assembly plan 02]: Frozen Settings dataclass — tests patch yt_dubber.merger.settings with types.SimpleNamespace, not direct field assignment
 
 ### Pending Todos
 
@@ -81,12 +84,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 5 (Audio Assembly): pyrubberband Windows concern RESOLVED — librosa fallback implemented in _time_stretch() (try/except any Exception)
+- Phase 5 (Audio Assembly): COMPLETE — both plans implemented and tested (101 tests GREEN)
 - Phase 4 (TTS): ElevenLabs rate limits vary by plan tier; resume support is mandatory (checkpoint layer now ready)
-- lameenc on Python 3.14: no cp314 wheels on PyPI — only relevant for development environment; production targets Python 3.10-3.13
+- lameenc on Python 3.14: no cp314 wheels on PyPI — WAV fallback implemented in merger.py; production targets Python 3.10-3.13 where lameenc works
 
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-01-PLAN.md — stretch_to_duration implemented, 17/17 new tests GREEN, 86/86 full suite GREEN
+Stopped at: Completed 05-02-PLAN.md — assemble_track() implemented, 15/15 new TestAssembleTrack tests GREEN, 101/101 full suite GREEN
 Resume file: None

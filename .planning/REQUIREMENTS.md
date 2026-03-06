@@ -25,9 +25,9 @@
 
 ### Audio
 
-- [ ] **AUDI-01**: Each audio segment is time-stretched/compressed to match original subtitle slot duration
-- [ ] **AUDI-02**: Track assembled using absolute timecode positions (no cumulative drift)
-- [ ] **AUDI-03**: User receives final dubbed audio track (MP3/WAV) named `<video_id>_dubbed_ru.mp3`
+- [x] **AUDI-01**: Each audio segment is time-stretched/compressed to match original subtitle slot duration
+- [x] **AUDI-02**: Track assembled using absolute timecode positions (no cumulative drift)
+- [x] **AUDI-03**: User receives final dubbed audio track (MP3/WAV) named `<video_id>_dubbed_ru.mp3`
 
 ### CLI
 
@@ -71,9 +71,9 @@
 | TTS-01 | Phase 4 | Complete |
 | TTS-02 | Phase 4 | Complete |
 | TTS-03 | Phase 4 | Complete |
-| AUDI-01 | Phase 5 | Pending |
-| AUDI-02 | Phase 5 | Pending |
-| AUDI-03 | Phase 5 | Pending |
+| AUDI-01 | Phase 5 | Complete |
+| AUDI-02 | Phase 5 | Complete |
+| AUDI-03 | Phase 5 | Complete |
 | CLI-01 | Phase 6 | Pending |
 | CLI-02 | Phase 6 | Pending |
 
@@ -87,4 +87,4 @@ dependency foundation for all other phases. All 14 requirements map to Phases 2-
 
 ---
 *Requirements defined: 2026-03-04*
-*Last updated: 2026-03-04 — traceability updated to match ROADMAP.md (Phases 2-6)*
+*Last updated: 2026-03-06 — AUDI-02 and AUDI-03 marked complete (Phase 5 plan 02)*

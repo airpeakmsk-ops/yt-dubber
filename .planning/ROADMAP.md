@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Subtitle Extraction** - yt-dlp subtitle download with deduplication and availability check
 - [ ] **Phase 3: Translation + DOCX** - Claude API translation, DOCX export, and user-edited DOCX read-back
 - [x] **Phase 4: TTS Synthesis** - ElevenLabs per-segment synthesis with skip logic and resume support (completed 2026-03-05)
-- [ ] **Phase 5: Audio Assembly** - Time-stretching, absolute-position track assembly, and MP3 export
+- [x] **Phase 5: Audio Assembly** - Time-stretching, absolute-position track assembly, and MP3 export (completed 2026-03-06)
 - [ ] **Phase 6: CLI + Slash Command** - Two-command CLI packaging and `/translate-video` Claude Code skill
 
 ## Phase Details
@@ -95,8 +95,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — pyproject.toml update (lameenc) + audio_sync.py TDD (stretch_to_duration with ratio clamp, silence pad, pyrubberband fallback)
-- [ ] 05-02-PLAN.md — merger.py TDD (assemble_track with numpy canvas, absolute timecodes, lameenc MP3 output)
+- [x] 05-01-PLAN.md — pyproject.toml update (lameenc) + audio_sync.py TDD (stretch_to_duration with ratio clamp, silence pad, pyrubberband fallback) ✓ 2026-03-06
+- [x] 05-02-PLAN.md — merger.py TDD (assemble_track with numpy canvas, absolute timecodes, lameenc MP3 output) ✓ 2026-03-06
 
 ### Phase 6: CLI + Slash Command
 **Goal**: Users can run the full pipeline through two named CLI subcommands and through a `/translate-video` Claude Code slash command that orchestrates both steps end-to-end
@@ -119,5 +119,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Subtitle Extraction | 0/TBD | Not started | - |
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
 | 4. TTS Synthesis | 2/2 | Complete   | 2026-03-05 |
-| 5. Audio Assembly | 1/2 | In Progress|  |
+| 5. Audio Assembly | 2/2 | ✓ Complete | 2026-03-06 |
 | 6. CLI + Slash Command | 0/TBD | Not started | - |
