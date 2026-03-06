@@ -282,3 +282,288 @@ class TestStretchToDuration:
         assert SAMPLE_RATE == 22050
         assert RATIO_MIN == 0.60
         assert RATIO_MAX == 1.75
+
+
+# ---------------------------------------------------------------------------
+# TestAssembleTrack — TDD tests for yt_dubber/merger.py assemble_track()
+# RED: all fail with NotImplementedError before Task 2 implements merger.py
+# GREEN: all pass after implementation
+# ---------------------------------------------------------------------------
+
+import pathlib
+from unittest.mock import patch
+
+from yt_dubber.merger import assemble_track
+from yt_dubber.models import SegmentStatus, SubtitleSegment, JobState
+
+
+def make_wav_bytes_for_assembly(duration_sec: float = 1.0, sr: int = 22050) -> bytes:
+    """Generate a silent WAV for assembly test fixtures."""
+    n_frames = int(sr * duration_sec)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(b"\x00" * n_frames * 2)
+    buf.seek(0)
+    return buf.read()
+
+
+def make_segment(
+    index: int,
+    start_sec: float,
+    end_sec: float,
+    status: SegmentStatus = SegmentStatus.TTS_DONE,
+    audio_path: str = None,
+) -> SubtitleSegment:
+    return SubtitleSegment(
+        index=index,
+        start_sec=start_sec,
+        end_sec=end_sec,
+        duration_sec=end_sec - start_sec,
+        jp_text="テスト",
+        ru_text="тест",
+        audio_path=audio_path,
+        status=status,
+    )
+
+
+class TestAssembleTrack:
+    """Tests for merger.assemble_track() — absolute-timecode audio assembly."""
+
+    # -----------------------------------------------------------------------
+    # Output file existence and naming
+    # -----------------------------------------------------------------------
+
+    def test_output_file_exists_at_given_path(self, tmp_path: Path) -> None:
+        """assemble_track writes output file to explicitly provided path."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            result_path = assemble_track([seg], total_ms=2000, output_path=str(tmp_path / "out.mp3"))
+
+        assert pathlib.Path(tmp_path / "out.mp3").exists()
+        assert pathlib.Path(tmp_path / "out.mp3").stat().st_size > 0
+
+    def test_returns_output_path_string(self, tmp_path: Path) -> None:
+        """assemble_track returns the output_path string."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        expected = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            result = assemble_track([seg], total_ms=2000, output_path=expected)
+
+        assert result == expected
+
+    def test_default_output_path_uses_video_id(self, tmp_path: Path, monkeypatch) -> None:
+        """Without output_path, file is named {video_id}_dubbed_ru.mp3 in settings.output_dir."""
+        import yt_dubber.config as cfg_module
+        monkeypatch.setattr(cfg_module.settings, "output_dir", str(tmp_path), raising=False)
+
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        job = JobState(
+            video_id="testvid",
+            video_title="Test Video",
+            source_url="https://youtube.com/watch?v=testvid",
+            docx_path=str(tmp_path / "test.docx"),
+            output_dir=str(tmp_path),
+        )
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            returned_path = assemble_track([seg], job=job)
+
+        assert returned_path.endswith("testvid_dubbed_ru.mp3")
+        assert pathlib.Path(returned_path).exists()
+
+    def test_total_ms_none_auto_computed(self, tmp_path: Path) -> None:
+        """total_ms=None auto-computes from max(seg.end_sec)*1000 — no error raised."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        wav_file2 = tmp_path / "seg_1.wav"
+        wav_file2.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg0 = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        seg1 = make_segment(1, 2.0, 3.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file2))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg0, seg1], output_path=out)  # no total_ms
+
+        assert pathlib.Path(out).exists()
+
+    def test_total_ms_provided_overrides_auto(self, tmp_path: Path) -> None:
+        """total_ms=5000 uses 5-second canvas even when seg.end_sec=1.0."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg], total_ms=5000, output_path=out)
+
+        assert pathlib.Path(out).exists()
+
+    # -----------------------------------------------------------------------
+    # MP3 output validity
+    # -----------------------------------------------------------------------
+
+    def test_output_is_valid_mp3(self, tmp_path: Path) -> None:
+        """Output file is non-trivially sized (> 100 bytes) — indicates real encoded data."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg], total_ms=2000, output_path=out)
+
+        size = pathlib.Path(out).stat().st_size
+        assert size > 100, f"Output file suspiciously small: {size} bytes"
+
+    # -----------------------------------------------------------------------
+    # Segment selection logic
+    # -----------------------------------------------------------------------
+
+    def test_tts_done_segment_included(self, tmp_path: Path) -> None:
+        """TTS_DONE segment with audio_path causes stretch_to_duration to be called once."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)) as mock_stretch:
+            assemble_track([seg], total_ms=2000, output_path=out)
+
+        mock_stretch.assert_called_once()
+
+    def test_error_segment_not_passed_to_stretch(self, tmp_path: Path) -> None:
+        """ERROR segment is skipped; only the TTS_DONE segment calls stretch_to_duration."""
+        wav_file = tmp_path / "seg_1.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg_err = make_segment(0, 0.0, 1.0, status=SegmentStatus.ERROR, audio_path=None)
+        seg_ok = make_segment(1, 1.0, 2.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)) as mock_stretch:
+            assemble_track([seg_err, seg_ok], total_ms=3000, output_path=out)
+
+        assert mock_stretch.call_count == 1, f"Expected 1 call (ERROR skipped), got {mock_stretch.call_count}"
+
+    def test_skipped_segment_with_audio_path_is_included(self, tmp_path: Path) -> None:
+        """SKIPPED segment with audio_path IS processed (voice exists, just skipped in translation)."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.SKIPPED, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)) as mock_stretch:
+            assemble_track([seg], total_ms=2000, output_path=out)
+
+        mock_stretch.assert_called_once()
+
+    def test_none_audio_path_segment_produces_silence_not_error(self, tmp_path: Path) -> None:
+        """TTS_DONE segment with audio_path=None is silently skipped (produces silence, no exception)."""
+        wav_file = tmp_path / "seg_1.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg_none = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=None)
+        seg_ok = make_segment(1, 1.0, 2.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)) as mock_stretch:
+            assemble_track([seg_none, seg_ok], total_ms=3000, output_path=out)
+
+        # None-path segment skipped — only one call
+        assert mock_stretch.call_count == 1, f"Expected 1 call (None-path skipped), got {mock_stretch.call_count}"
+
+    # -----------------------------------------------------------------------
+    # Absolute timecode placement (no drift)
+    # -----------------------------------------------------------------------
+
+    def test_absolute_timecode_stretch_called_with_correct_target_ms(self, tmp_path: Path) -> None:
+        """stretch_to_duration called with target_ms=int(duration_sec*1000)."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.5))
+        seg = make_segment(0, 2.0, 3.5, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.5)) as mock_stretch:
+            assemble_track([seg], total_ms=4000, output_path=out)
+
+        args, kwargs = mock_stretch.call_args
+        # stretch_to_duration(audio_path, target_ms, index=seg.index)
+        target_ms_passed = args[1] if len(args) > 1 else kwargs.get("target_ms")
+        assert target_ms_passed == 1500, f"Expected target_ms=1500, got {target_ms_passed}"
+
+    def test_two_segments_at_nonadjacent_positions(self, tmp_path: Path) -> None:
+        """Gap between seg0 (0-1s) and seg1 (5-6s) stays as silence — absolute placement."""
+        wav_file0 = tmp_path / "seg_0.wav"
+        wav_file0.write_bytes(make_wav_bytes_for_assembly(1.0))
+        wav_file1 = tmp_path / "seg_1.wav"
+        wav_file1.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg0 = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file0))
+        seg1 = make_segment(1, 5.0, 6.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file1))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg0, seg1], total_ms=6000, output_path=out)
+
+        assert pathlib.Path(out).exists()
+        assert pathlib.Path(out).stat().st_size > 0
+
+    # -----------------------------------------------------------------------
+    # Progress logging
+    # -----------------------------------------------------------------------
+
+    def test_assembling_log_emitted(self, tmp_path: Path, capsys) -> None:
+        """'Assembling N segments...' printed to stdout with correct segment count."""
+        wav_file0 = tmp_path / "seg_0.wav"
+        wav_file0.write_bytes(make_wav_bytes_for_assembly(1.0))
+        wav_file1 = tmp_path / "seg_1.wav"
+        wav_file1.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg0 = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file0))
+        seg1 = make_segment(1, 1.0, 2.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file1))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg0, seg1], total_ms=3000, output_path=out)
+
+        captured = capsys.readouterr()
+        assert "Assembling" in captured.out, f"Expected 'Assembling' in stdout, got: {captured.out!r}"
+        assert "2" in captured.out, f"Expected '2' (segment count) in stdout, got: {captured.out!r}"
+
+    def test_done_log_emitted_with_path(self, tmp_path: Path, capsys) -> None:
+        """'Done: {output_path}' printed to stdout after assembly."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(1.0))
+        seg = make_segment(0, 0.0, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(1.0)):
+            assemble_track([seg], total_ms=2000, output_path=out)
+
+        captured = capsys.readouterr()
+        assert "Done:" in captured.out, f"Expected 'Done:' in stdout, got: {captured.out!r}"
+        assert "out.mp3" in captured.out, f"Expected 'out.mp3' in stdout, got: {captured.out!r}"
+
+    # -----------------------------------------------------------------------
+    # Canvas boundary guard
+    # -----------------------------------------------------------------------
+
+    def test_no_index_error_when_segment_overruns_canvas(self, tmp_path: Path) -> None:
+        """Segment returning longer audio than its slot gets truncated — no IndexError."""
+        wav_file = tmp_path / "seg_0.wav"
+        wav_file.write_bytes(make_wav_bytes_for_assembly(0.1))
+        seg = make_segment(0, 0.9, 1.0, status=SegmentStatus.TTS_DONE, audio_path=str(wav_file))
+        out = str(tmp_path / "out.mp3")
+
+        # stretch_to_duration returns 0.2s WAV (longer than 0.1s slot at end of 1s canvas)
+        with patch("yt_dubber.merger.stretch_to_duration", return_value=make_wav_bytes_for_assembly(0.2)):
+            assemble_track([seg], total_ms=1000, output_path=out)
+
+        assert pathlib.Path(out).exists()
