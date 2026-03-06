@@ -119,5 +119,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Subtitle Extraction | 0/TBD | Not started | - |
 | 3. Translation + DOCX | 2/2 | ✓ Complete | 2026-03-05 |
 | 4. TTS Synthesis | 2/2 | Complete   | 2026-03-05 |
-| 5. Audio Assembly | 0/2 | Not started | - |
+| 5. Audio Assembly | 1/2 | In Progress|  |
 | 6. CLI + Slash Command | 0/TBD | Not started | - |

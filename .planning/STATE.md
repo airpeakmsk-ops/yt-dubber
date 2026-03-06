@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-03-05T21:11:00Z"
+status: unknown
+last_updated: "2026-03-06T06:42:08.338Z"
 progress:
-  total_phases: 6
+  total_phases: 5
   completed_phases: 3
-  total_plans: 8
-  completed_plans: 5
+  total_plans: 9
+  completed_plans: 6
 ---
 
 # State: YT-Dubber
@@ -19,16 +19,16 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 See: .planning/ROADMAP.md (created 2026-03-04)
 
 **Core value:** A Russian speaker can get a synchronized dubbed audio track for any Japanese YouTube video — with a human review step before any audio is generated, ensuring translation quality.
-**Current focus:** Milestone v1.0 — Phase 4: TTS Synthesis (plan 02 complete — all Phase 4 plans done)
+**Current focus:** Milestone v1.0 — Phase 5: Audio Assembly (plan 01 complete — stretch_to_duration implemented)
 
 ## Current Position
 
-Phase: 4 of 6 (TTS Synthesis)
-Plan: 2 of 2 in current phase (04-02 complete — Phase 4 DONE)
-Status: Phase 4 complete — tts.py implemented (should_synthesize + synthesize_all), 30/30 TTS tests GREEN, 61/61 full suite GREEN
-Last activity: 2026-03-05 — Phase 4 plan 02 executed: tts.py full TTS engine (ElevenLabs synthesis, silence generation, exponential-backoff retry, per-segment checkpointing, resume support), tests/test_tts.py (30 TDD tests). All 61 suite tests pass.
+Phase: 5 of 6 (Audio Assembly)
+Plan: 1 of 2 in current phase (05-01 complete)
+Status: Phase 5 plan 01 complete — audio_sync.py stretch_to_duration implemented, 17/17 new tests GREEN, 86/86 full suite GREEN
+Last activity: 2026-03-06 — Phase 5 plan 01 executed: stretch_to_duration() with librosa/pyrubberband time-stretch, RATIO_MIN/MAX clamping, exact trim+pad, tests/test_assembly.py (17 TDD tests). All 86 suite tests pass.
 
-Progress: [██████░░░░] 60%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [██████░░░░] 60%
 |-------|-------|-------|----------|
 | 03-translation-docx | 2 | 7 min | 3.5 min |
 | 04-tts-synthesis | 2 | 13 min | 6.5 min |
+| 05-audio-assembly | 1 | 8 min | 8 min |
 
 *Updated after each plan completion*
 
@@ -70,6 +71,9 @@ Progress: [██████░░░░] 60%
 - [Phase 04-tts-synthesis]: synthesize_all extended with optional job + checkpoint_path params (backward compatible) to enable checkpoint.save() without breaking stub callers
 - [Phase 04-tts-synthesis]: make_api_error must return real ApiError instance (not MagicMock) — MagicMock cannot be raised in Python 3.14 mock side_effect
 - [Phase 04-tts-synthesis]: Retry-After header access wrapped in try/except AttributeError to handle None headers from SDK gracefully
+- [Phase 05-audio-assembly]: librosa primary time-stretch with pyrubberband fallback on any Exception — avoids Windows rubberband.exe dependency
+- [Phase 05-audio-assembly]: Exact trim+pad to int(target_ms * 22050 / 1000) samples ensures zero-drift audio assembly in merger
+- [Phase 05-audio-assembly]: lameenc added to required deps (not optional) — needed by merger.py; cp314 wheels not yet available on PyPI
 
 ### Pending Todos
 
@@ -77,11 +81,12 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 5 (Audio Assembly): pyrubberband requires separate `rubberband.exe` binary on Windows — librosa fallback must be implemented
+- Phase 5 (Audio Assembly): pyrubberband Windows concern RESOLVED — librosa fallback implemented in _time_stretch() (try/except any Exception)
 - Phase 4 (TTS): ElevenLabs rate limits vary by plan tier; resume support is mandatory (checkpoint layer now ready)
+- lameenc on Python 3.14: no cp314 wheels on PyPI — only relevant for development environment; production targets Python 3.10-3.13
 
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: Completed 04-02-PLAN.md — tts.py implemented, 30/30 TTS tests GREEN, 61/61 full suite GREEN
+Last session: 2026-03-06
+Stopped at: Completed 05-01-PLAN.md — stretch_to_duration implemented, 17/17 new tests GREEN, 86/86 full suite GREEN
 Resume file: None
