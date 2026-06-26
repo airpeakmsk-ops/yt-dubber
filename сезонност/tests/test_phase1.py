@@ -9,6 +9,7 @@ Pending stubs (implemented red until later plans build against them):
   - matcher   (MATCH-01/02)  -> plan 01-04
 """
 import datetime
+import pathlib
 
 import pytest
 
@@ -250,12 +251,37 @@ def test_cbr_cache(monkeypatch, mock_cbr_xml):
 # --------------------------------------------------------------------------
 # Pending matcher stubs — MATCH-01 / MATCH-02 (plan 01-04)
 # --------------------------------------------------------------------------
+_INTERIM = pathlib.Path(__file__).resolve().parent.parent / "data" / "interim"
+_PARQUETS_READY = all(
+    (_INTERIM / f"{n}.parquet").exists()
+    for n in ("prikhody", "prodazhi", "ostatki")
+)
+_skip_no_parquet = pytest.mark.skipif(
+    not _PARQUETS_READY,
+    reason="interim parquets not built — run plans 01-02/01-03 first",
+)
+
+
+@_skip_no_parquet
 def test_join_coverage_sales():
-    pytest.fail("pending plan 01-04")
+    """Sale EANs present in the приход spine >= 1282 and coverage > 90%."""
+    from src.build_master import build_master
+
+    _master, report = build_master()
+
+    assert report["n_sales_in_spine"] >= 1282
+    assert report["coverage_pct_sales"] > 90
 
 
+@_skip_no_parquet
 def test_join_coverage_stock():
-    pytest.fail("pending plan 01-04")
+    """Stock EANs present in the приход spine >= 955 and coverage > 90%."""
+    from src.build_master import build_master
+
+    _master, report = build_master()
+
+    assert report["n_stock_in_spine"] >= 955
+    assert report["coverage_pct_stock"] > 90
 
 
 def test_unmatched_report():
