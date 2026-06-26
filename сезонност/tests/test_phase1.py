@@ -284,5 +284,24 @@ def test_join_coverage_stock():
     assert report["coverage_pct_stock"] > 90
 
 
+@_skip_no_parquet
 def test_unmatched_report():
-    pytest.fail("pending plan 01-04")
+    """unmatched_report.json: 24 sale + 4 stock without приход, reasons, coverage >90%."""
+    import json
+
+    from src.build_master import UNMATCHED_PATH, main
+
+    # Run the module to (re)produce the real artifact, then read it back.
+    main()
+    report = json.loads(UNMATCHED_PATH.read_text(encoding="utf-8"))
+
+    sales = report["sales_without_prikhod"]
+    stock = report["stock_without_prikhod"]
+
+    assert len(sales) == 24
+    assert len(stock) == 4
+    assert all(r["reason"] == "sale_without_prikhod" for r in sales)
+    assert all(r["reason"] == "stock_without_prikhod" for r in stock)
+
+    assert report["coverage_pct_sales"] > 90
+    assert report["coverage_pct_stock"] > 90

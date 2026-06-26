@@ -1,0 +1,125 @@
+{
+  "n_spine_eans": 1300,
+  "n_sales_eans": 1306,
+  "n_stock_eans": 959,
+  "n_sales_in_spine": 1282,
+  "n_stock_in_spine": 955,
+  "coverage_pct_sales": 98.16,
+  "coverage_pct_stock": 99.58,
+  "sales_without_prikhod": [
+    {
+      "ean": 4525807254518,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807285819,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807285826,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807296297,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807299120,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807299137,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306439,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306446,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306453,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306460,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306477,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306484,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306491,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306507,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306514,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306521,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306538,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306545,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306552,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4525807306569,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4582418090775,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4582418090782,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4582418099532,
+      "reason": "sale_without_prikhod"
+    },
+    {
+      "ean": 4582418099556,
+      "reason": "sale_without_prikhod"
+    }
+  ],
+  "stock_without_prikhod": [
+    {
+      "ean": 4525807285819,
+      "reason": "stock_without_prikhod"
+    },
+    {
+      "ean": 4525807285826,
+      "reason": "stock_without_prikhod"
+    },
+    {
+      "ean": 4525807306491,
+      "reason": "stock_without_prikhod"
+    },
+    {
+      "ean": 4582418099532,
+      "reason": "stock_without_prikhod"
+    }
+  ]
+}
