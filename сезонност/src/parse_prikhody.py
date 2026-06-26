@@ -12,16 +12,22 @@ open them — no sharedStrings.xml). Column layout is uniform across all 21 file
 """
 import datetime
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
 import python_calamine
 
-from src.cbr_rates import get_usd_rate, load_cache, save_cache
-from src.normalize import normalize_ean
-
 # Project root = parent of src/ (this file lives in <root>/src/parse_prikhody.py).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Allow `python src/parse_prikhody.py` (script mode) to resolve the `src.` package
+# the same way pytest / `python -m` already do.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.cbr_rates import get_usd_rate, load_cache, save_cache  # noqa: E402
+from src.normalize import normalize_ean  # noqa: E402
 PRIKHOD_DIR = PROJECT_ROOT / "поступления товаров"
 PRIKHOD_RUB_DIR = PRIKHOD_DIR / "в рублях"
 
