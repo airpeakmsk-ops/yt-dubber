@@ -46,24 +46,102 @@ def test_exclude_test_skus():
 # --------------------------------------------------------------------------
 # Pending parser stubs — DATA-01..03 (plans 01-02 / 01-03)
 # --------------------------------------------------------------------------
-def test_parse_prikhod_basic():
-    pytest.fail("pending plan 01-02")
+def test_parse_prikhod_basic(prikhod_dir):
+    """Parse one real файл with курс in name -> non-empty list[dict] in schema."""
+    from src.parse_prikhody import parse_prikhod_file
+
+    path = prikhod_dir / "7 приход курс 94.xlsx"
+    records = parse_prikhod_file(path, {})
+
+    assert isinstance(records, list)
+    assert len(records) > 0
+
+    keys = {"ean", "name", "qty", "price_rub", "invoice_date", "rate_usd", "rate_source"}
+    first = records[0]
+    assert keys <= set(first.keys())
+
+    # rate came from the filename ("94") for this file
+    assert first["rate_source"] == "filename"
+    assert first["rate_usd"] == 94.0
+
+    # ean is an int, not a float-with-.0
+    assert all(isinstance(r["ean"], int) for r in records)
+
+    # invoice date parsed from row 2 ('Накладная № 4 от 11 апреля 2024 г.')
+    assert first["invoice_date"] == datetime.date(2024, 4, 11)
+
+    # a known EAN from this file is present
+    eans = {r["ean"] for r in records}
+    assert 4525807255034 in eans
 
 
-def test_all_prikhod_files_parse():
-    pytest.fail("pending plan 01-02")
+def test_all_prikhod_files_parse(prikhod_dir, prikhod_rub_dir):
+    """All 21 source files parse, are represented, and yield a sane EAN count."""
+    from src.parse_prikhody import parse_all_prikhody
+
+    df = parse_all_prikhody()
+
+    assert len(df) > 0
+    # 16 (с курсом) + 5 (в рублях) = 21 source files represented
+    assert df["source_file"].nunique() == 21
+    # ~1300 spine EANs per RESEARCH — assert a floor, not a brittle exact number
+    assert df["ean"].nunique() > 1000
+
+    # в рублях/ files must use the CBR API rate source with positive rates
+    cbr_rows = df[df["rate_source"] == "cbr_api"]
+    assert len(cbr_rows) > 0
+    assert (cbr_rows["rate_usd"] > 0).all()
 
 
-def test_no_footer_rows():
-    pytest.fail("pending plan 01-02")
+def test_no_footer_rows(prikhod_dir):
+    """Footer/header rows never appear; every ean is a valid 13-digit EAN."""
+    from src.parse_prikhody import parse_prikhod_file
+
+    records = parse_prikhod_file(prikhod_dir / "7 приход курс 94.xlsx", {})
+
+    for r in records:
+        name = str(r["name"])
+        assert "Итого" not in name
+        assert "Всего наименований" not in name
+        assert r["ean"] > 1e12
+        assert r["ean"] != 9999999999999
 
 
-def test_prodazhi_month_count():
-    pytest.fail("pending plan 01-03")
+def test_prodazhi_month_count(prodazhi_file):
+    """build_month_map returns exactly 33 months, first 'Октябрь 2023', none 'Итог'."""
+    import python_calamine as pc
+
+    from src.parse_prodazhi import build_month_map
+
+    ws = pc.CalamineWorkbook.from_path(str(prodazhi_file)).get_sheet_by_name("TDSheet")
+    rows = list(ws.iter_rows())
+    months = build_month_map(rows)
+
+    assert len(months) == 33
+    assert str(months[0]["label"]).startswith("Октябрь 2023")
+    assert all(m["label"] != "Итог" for m in months)
 
 
-def test_prodazhi_no_name_rows():
-    pytest.fail("pending plan 01-03")
+def test_prodazhi_no_name_rows(prodazhi_file):
+    """EAN-rows only; no name-row duplication; samples/test-SKU/footer dropped."""
+    from src.parse_prodazhi import parse_prodazhi
+
+    df = parse_prodazhi(prodazhi_file)
+
+    # a known EAN that sells across months
+    known = 4525807270297
+    sub = df[df["ean"] == known]
+    assert len(sub) > 0, "known EAN must have records"
+    # each month appears at most once for this EAN (no name-row duplication)
+    assert sub["month"].is_unique
+
+    # free-sample EAN never present
+    assert 9999999999999 not in df["ean"].values
+
+    # every emitted ean is a clean 13-digit int (proves '-1' test SKUs and
+    # name/footer rows were dropped, not just sample EANs)
+    assert df["ean"].map(lambda e: isinstance(e, (int,)) and not isinstance(e, bool)).all()
+    assert df["ean"].map(lambda e: 1_000_000_000_000 <= e < 10_000_000_000_000).all()
 
 
 def test_ostatki_ean_count():
@@ -71,7 +149,34 @@ def test_ostatki_ean_count():
 
 
 def test_rate_extraction():
-    pytest.fail("pending plan 01-02")
+    """extract_rate_from_filename: float for all 16 курс files, None for the 5 в рублях."""
+    from src.parse_prikhody import extract_rate_from_filename
+
+    # 16 files with курс in the name -> exact float
+    expected = {
+        "11 приход 103,79": 103.79,
+        "12.1 приход курс 97,28 (2)": 97.28,
+        "12.2 приход курс 97,28": 97.28,
+        "13 приход курс 89,57": 89.57,
+        "14 приход курс 79,71": 79.71,
+        "15 приход курс 79,79": 79.79,
+        "16 приход курс 86,67": 86.67,
+        "17 приход курс 83,69": 83.69,
+        "18 приход  курс 87,59": 87.59,
+        "19 приход курс 85,05": 85.05,
+        "20 приход курс 82,72": 82.72,
+        "3 приход курс 89,67": 89.67,
+        "6 приход курс 95,8": 95.8,
+        "7 приход курс 94": 94.0,
+        "8 приход курс 96": 96.0,
+        "9 приход курс 89,54": 89.54,
+    }
+    for stem, rate in expected.items():
+        assert extract_rate_from_filename(stem) == rate, stem
+
+    # 5 в рублях/ files have no rate in the name -> None
+    for stem in ["1 приход", "10 приход ", "14 приход", "2 приход", "4 приход "]:
+        assert extract_rate_from_filename(stem) is None, stem
 
 
 # --------------------------------------------------------------------------
