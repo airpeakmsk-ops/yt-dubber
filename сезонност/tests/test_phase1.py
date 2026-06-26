@@ -144,8 +144,27 @@ def test_prodazhi_no_name_rows(prodazhi_file):
     assert df["ean"].map(lambda e: 1_000_000_000_000 <= e < 10_000_000_000_000).all()
 
 
-def test_ostatki_ean_count():
-    pytest.fail("pending plan 01-03")
+def test_ostatki_ean_count(ostatki_file):
+    """parse_ostatki -> DataFrame(ean,name,qty_stock); >800 EANs, samples excluded."""
+    import pandas as pd
+
+    from src.parse_ostatki import parse_ostatki
+
+    df = parse_ostatki(ostatki_file)
+
+    assert list(df.columns) == ["ean", "name", "qty_stock"]
+    # ~959 expected — assert a floor, not a brittle exact
+    assert df["ean"].nunique() > 800
+    # free-sample EAN excluded
+    assert 9999999999999 not in df["ean"].values
+    # every ean is a clean 13-digit int
+    assert df["ean"].map(lambda e: 1_000_000_000_000 <= e < 10_000_000_000_000).all()
+    # qty_stock is numeric. NOTE: it can be negative — 1С free stock goes
+    # negative when reserved exceeds physical on-hand (a real urgent-reorder
+    # signal), so we assert numeric dtype, not non-negativity.
+    assert pd.api.types.is_numeric_dtype(df["qty_stock"])
+    # each EAN-row carries a name label
+    assert df["name"].notna().all()
 
 
 def test_rate_extraction():
