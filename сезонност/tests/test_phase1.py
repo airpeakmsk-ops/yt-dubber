@@ -8,6 +8,8 @@ Pending stubs (implemented red until later plans build against them):
   - parsers   (DATA-01..03)  -> plans 01-02 / 01-03
   - matcher   (MATCH-01/02)  -> plan 01-04
 """
+import datetime
+
 import pytest
 
 from src.normalize import normalize_ean
@@ -73,14 +75,52 @@ def test_rate_extraction():
 
 
 # --------------------------------------------------------------------------
-# cbr_rates tests — DATA-04 (implemented green in task 3 of this plan)
+# cbr_rates tests — DATA-04
 # --------------------------------------------------------------------------
+@pytest.mark.live
 def test_cbr_api():
-    pytest.fail("pending plan 01-01 task 3")
+    """Live CBR lookup for a known invoice date (~96.63, tolerance +/- 1.0)."""
+    from src import cbr_rates
+
+    rate = cbr_rates.get_usd_rate(datetime.date(2023, 9, 18), {})
+    assert isinstance(rate, float)
+    assert abs(rate - 96.63) < 1.0
 
 
-def test_cbr_cache():
-    pytest.fail("pending plan 01-01 task 3")
+def test_cbr_cache(monkeypatch, mock_cbr_xml):
+    """Second lookup for the same date hits the cache — exactly ONE HTTP call."""
+    from src import cbr_rates
+
+    calls = {"n": 0}
+
+    class _FakeResponse:
+        def __init__(self, payload: bytes):
+            self._payload = payload
+
+        def read(self) -> bytes:
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _fake_urlopen(url, timeout=None):
+        calls["n"] += 1
+        return _FakeResponse(mock_cbr_xml.encode("windows-1251"))
+
+    monkeypatch.setattr(cbr_rates.urllib.request, "urlopen", _fake_urlopen)
+
+    cache: dict = {}
+    d = datetime.date(2023, 9, 18)
+
+    r1 = cbr_rates.get_usd_rate(d, cache)
+    r2 = cbr_rates.get_usd_rate(d, cache)
+
+    assert abs(r1 - 96.6338) < 1e-6
+    assert r1 == r2
+    assert calls["n"] == 1  # second call served from cache, no extra HTTP
 
 
 # --------------------------------------------------------------------------
