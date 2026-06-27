@@ -78,13 +78,6 @@ def test_cumulative_oracle(report_df, master_cost, prodazhi, oracle_eans):
 
 
 # --- REPORT-04 ---------------------------------------------------------------
-@pytest.mark.xfail(
-    reason=(
-        "build_report wires months_in_stock in 04-04 (contract change); "
-        "test asserts NEW availability-velocity contract"
-    ),
-    strict=False,
-)
 def test_velocity_and_dsi(report_df, master_cost, oracle_eans, weekly_months_map):
     """Velocity and DSI now use months_in_stock from weekly file (Phase 4 contract change).
 
@@ -184,10 +177,6 @@ def test_write_is_idempotent_mocked():
 
 
 # --- serializability ---------------------------------------------------------
-@pytest.mark.xfail(
-    reason="84 cols (ANALYTIC block M-R) delivered in Plan 04-04; currently 78 cols",
-    strict=False,
-)
 def test_df_to_rows_serializable(report_df):
     """Column count updated to 84 (Phase 4 layout: 10 base + 2 cum_summary + 6 analytic + 33 monthly + 33 cum).
 

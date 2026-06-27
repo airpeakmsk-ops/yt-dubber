@@ -1,14 +1,20 @@
-"""build_report — assemble the single Phase 3 report DataFrame (OFFLINE, pure pandas).
+"""build_report — assemble the single Phase 4 report DataFrame (OFFLINE, pure pandas).
 
 Joins the Phase 2 spine (master_cost.parquet — all 1300 EAN, nothing lost) with the
-long-format monthly sales (prodazhi.parquet). Produces, per товар:
+long-format monthly sales (prodazhi.parquet) and the weekly stock file
+(остатки по неделям.xlsx). Produces, per товар:
   - base columns A..J (cost, приходы, остаток, продано, возраст, скорость, DSI)
+    NB: Скорость/DSI are now AVAILABILITY-BASED (months_in_stock from weekly file).
   - «Накопит. приходы» / «Накопит. продажи» (REPORT-03 summary)
+  - 6 analytical columns M..R (% продаж, Зелёный, Индекс сезона, К заказу, Мёртвый, Залежалый)
   - 33 monthly sales columns, chronological via month_sort_key (REPORT-02)
   - 33 «Кум. …» monthly cumulative sales columns (REPORT-03 manual-checkable)
 
-NO network, NO gspread — Sheets writing lives in Plan 02. df_to_rows() converts the
-DataFrame to a JSON-safe list[list] (dates → ISO str, NaN/NaT → "", numpy → py scalar)
+Final layout: 84 columns (10 BASE + 2 CUM_SUMMARY + 6 ANALYTIC + 33 monthly + 33 cum).
+Rows are presorted: red (DSI<30) first, within bucket by DSI ascending (VISUAL-03).
+
+NO network, NO gspread — Sheets writing lives in report_to_sheets. df_to_rows() converts
+the DataFrame to a JSON-safe list[list] (dates → ISO str, NaN/NaT → "", numpy → py scalar)
 so the eventual Sheets writer never sees a non-serializable cell (REPORT serializable).
 """
 from __future__ import annotations
@@ -32,10 +38,14 @@ from src.report_metrics import (  # noqa: E402
     sht_per_month,
     stock_age_days,
 )
+from src.parse_ostatki_weekly import parse_weekly_stock, months_in_stock  # noqa: E402
+from src.seasonality import compute_global_seasonal_index  # noqa: E402
+from src.order_plan import enrich_df, presort_by_dsi  # noqa: E402
 
 INTERIM = pathlib.Path("data/interim")
 MASTER_COST_PATH = INTERIM / "master_cost.parquet"
 PRODAZHI_PATH = INTERIM / "prodazhi.parquet"
+WEEKLY_PATH = pathlib.Path("остатки по неделям.xlsx")
 
 CUM_PREFIX = "Кум. "
 
@@ -53,21 +63,48 @@ BASE_COLS = [
     "DSI, дней",
 ]
 CUM_SUMMARY_COLS = ["Накопит. приходы", "Накопит. продажи"]
+ANALYTIC_COLS = [
+    "% продаж к приходам",
+    "Зелёный товар",
+    "Индекс сезона (след. 2 мес)",
+    "К заказу на 2 мес",
+    "Мёртвый",
+    "Залежалый",
+]
 
 
 def build_report_df(
     master_cost_path: pathlib.Path = MASTER_COST_PATH,
     prodazhi_path: pathlib.Path = PRODAZHI_PATH,
     n_months: int = N_MONTHS_DEFAULT,
+    weekly_path: pathlib.Path | None = None,
 ) -> pd.DataFrame:
-    """Build the report DataFrame: 1300 rows (all EAN spine) × ~78 columns.
+    """Build the report DataFrame: 1300 rows (all EAN spine) × 84 columns.
 
-    n_months (default 33) is the velocity / DSI base period (locked).
+    Velocity and DSI are now AVAILABILITY-BASED: each EAN uses months_in_stock
+    from the weekly stock file instead of the fixed n_months period.
+    Fallback to n_months (default 33) for EAN absent from weekly file (Pitfall 6).
+
+    Column layout (84):
+      A..J  BASE_COLS (10)
+      K..L  CUM_SUMMARY_COLS (2)
+      M..R  ANALYTIC_COLS (6): % продаж, Зелёный, Индекс сезона, К заказу, Мёртвый, Залежалый
+      S..AX  33 monthly sales columns
+      AY..BZ 33 «Кум. » columns
+
+    Rows are presorted: red (DSI<30) first, secondary DSI ascending (VISUAL-03).
     """
     master = pd.read_parquet(master_cost_path)
     pro = pd.read_parquet(prodazhi_path)
 
     spine = master["ean"].tolist()  # stable order = master order (REPORT-01: nothing lost)
+
+    # --- weekly stock map for availability-based velocity (Phase 4 contract change) ---
+    _weekly_path = weekly_path if weekly_path is not None else WEEKLY_PATH
+    weekly_map = parse_weekly_stock(_weekly_path)
+
+    # --- seasonal index map for enrich_df ---
+    season_map = compute_global_seasonal_index(pro)
 
     # --- monthly pivot, chronologically ordered (Pitfall 1: never trust parquet order) ---
     month_order = sorted(pro["month"].unique(), key=month_sort_key)
@@ -98,7 +135,13 @@ def build_report_df(
         [stock_age_days(p) for p in master["partii"]], index=spine, dtype=object
     )
 
-    velocity = [sht_per_month(q, n_months) for q in master["qty_sold_total"]]
+    # Availability-based velocity: use months_in_stock from weekly file per EAN.
+    # Fallback = n_months (33) for EAN absent from weekly_map (Pitfall 6).
+    ean_list = master["ean"].tolist()
+    velocity = [
+        sht_per_month(q, months_in_stock(weekly_map, ean, default=n_months))
+        for q, ean in zip(master["qty_sold_total"], ean_list)
+    ]
     base["Скорость, шт/мес"] = velocity
     base["DSI, дней"] = [
         dsi_days(stock, v) for stock, v in zip(master["qty_stock"], velocity)
@@ -108,11 +151,22 @@ def build_report_df(
     base["Накопит. приходы"] = master["qty_prikhod"].values
     base["Накопит. продажи"] = master["qty_sold_total"].values
 
-    # --- final assembly: base + summary + monthly + cum-monthly (locked column order) ---
-    df = pd.concat([base, pivot, cum_pivot], axis=1)
-    final_cols = BASE_COLS + CUM_SUMMARY_COLS + list(month_order) + list(cum_pivot.columns)
-    df = df[final_cols].reset_index(drop=True)
-    return df
+    # --- base + CUM_SUMMARY assembled first (enrich_df reads velocity/DSI from here) ---
+    base_df = pd.concat([base, pivot, cum_pivot], axis=1)
+    base_df = base_df[BASE_COLS + CUM_SUMMARY_COLS].copy()
+
+    # --- 6 analytical columns M..R via order_plan.enrich_df ---
+    enriched = enrich_df(base_df, master, pro, season_map, weekly_map)
+
+    # --- final assembly: BASE + CUM_SUMMARY + ANALYTIC + monthly + cum-monthly ---
+    df_full = pd.concat([enriched, pivot, cum_pivot], axis=1)
+    final_cols = BASE_COLS + CUM_SUMMARY_COLS + ANALYTIC_COLS + list(month_order) + list(cum_pivot.columns)
+    df_full = df_full[final_cols].reset_index(drop=True)
+
+    # --- presort: red (DSI<30) first, secondary DSI ascending (VISUAL-03) ---
+    df_full = presort_by_dsi(df_full)
+
+    return df_full
 
 
 def _to_cell(v):
