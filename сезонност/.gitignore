@@ -1,0 +1,18 @@
+# secrets / creds — НИКОГДА не коммитить
+*.json
+.env
+credentials.json
+google_credentials.json
+
+# raw source workbooks (тяжёлые, не в VCS)
+*.xlsx
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- intentional exceptions (legit tracked project artifacts, NOT secrets) ---
+# Эти interim JSON — выходные данные проекта, не креды. Держим под версионным контролем.
+!data/interim/cbr_rates_cache.json
+!data/interim/unmatched_report.json

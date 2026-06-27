@@ -106,6 +106,65 @@ def test_stock_age(report_df, master_cost, oracle_eans):
         assert row["Возраст остатка, дней"] >= 0
 
 
+# --- Plan 02: idempotent Sheets write (gspread fully mocked, NO network) ------
+class _FakeWorksheet:
+    """Records clear()/update() calls; .data holds the last written rows."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.update_count = 0
+        self.data: list[list] | None = None
+
+    def clear(self) -> None:
+        self.calls.append("clear")
+        self.data = None
+
+    def update(self, values, value_input_option=None):
+        self.calls.append("update")
+        self.update_count += 1
+        self.data = values  # overwrite — never append (idempotent)
+
+
+class _FakeSpreadsheet:
+    """worksheet(title) always returns the SAME worksheet (existing sheet, not recreated)."""
+
+    def __init__(self, ws: _FakeWorksheet) -> None:
+        self._ws = ws
+        self.added: list[str] = []
+
+    def worksheet(self, title):
+        return self._ws
+
+    def add_worksheet(self, title, rows, cols):  # pragma: no cover - not hit when ws exists
+        self.added.append(title)
+        return self._ws
+
+
+def test_write_is_idempotent_mocked():
+    """write_report must clear→update once per run and never duplicate (no network)."""
+    from src.sheets_client import write_report
+
+    sample_rows = [["EAN", "name"], [123, "a"], [456, "b"]]
+    ws = _FakeWorksheet()
+    ss = _FakeSpreadsheet(ws)
+
+    # Run twice — simulate a re-run.
+    n1 = write_report(ss, "Отчёт", sample_rows)
+    n2 = write_report(ss, "Отчёт", sample_rows)
+
+    # Returns data-row count (rows minus header) each time.
+    assert n1 == 2 and n2 == 2
+    # Exactly one update per run — batch write, not row-by-row.
+    assert ws.update_count == 2
+    # clear() always precedes update() within each run.
+    assert ws.calls == ["clear", "update", "clear", "update"]
+    # Sheet was NOT recreated (sheetId persists for Phase 4).
+    assert ss.added == []
+    # No duplication: final state == the rows themselves, not rows x 2.
+    assert ws.data == sample_rows
+    assert len(ws.data) == len(sample_rows)
+
+
 # --- serializability ---------------------------------------------------------
 def test_df_to_rows_serializable(report_df):
     rows = df_to_rows(report_df)
