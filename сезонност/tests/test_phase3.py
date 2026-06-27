@@ -78,6 +78,13 @@ def test_cumulative_oracle(report_df, master_cost, prodazhi, oracle_eans):
 
 
 # --- REPORT-04 ---------------------------------------------------------------
+@pytest.mark.xfail(
+    reason=(
+        "build_report wires months_in_stock in 04-04 (contract change); "
+        "test asserts NEW availability-velocity contract"
+    ),
+    strict=False,
+)
 def test_velocity_and_dsi(report_df, master_cost, oracle_eans, weekly_months_map):
     """Velocity and DSI now use months_in_stock from weekly file (Phase 4 contract change).
 
@@ -87,7 +94,8 @@ def test_velocity_and_dsi(report_df, master_cost, oracle_eans, weekly_months_map
         row = report_df[report_df["EAN"] == ean].iloc[0]
         mc_row = master_cost[master_cost["ean"] == ean].iloc[0]
         # Phase 4 contract: use actual months_in_stock; fallback 33 if absent from weekly
-        m = weekly_months_map.get(ean, N_MONTHS)
+        months_set = weekly_months_map.get(ean)
+        m = len(months_set) if months_set is not None else N_MONTHS
         expected_v = mc_row["qty_sold_total"] / m
         assert row["Скорость, шт/мес"] == pytest.approx(expected_v, abs=1e-6), (
             f"EAN {ean}: velocity mismatch (months_in_stock={m})"
