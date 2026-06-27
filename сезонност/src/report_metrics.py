@@ -1,13 +1,21 @@
-"""report_metrics — pure metric functions for the Phase 3 report (no network, no file IO).
+"""report_metrics — pure metric functions for the Phase 3/4 report (no network, no file IO).
 
 All functions are deterministic and operate on in-memory values, so the whole report
-is unit-testable offline. Locked decisions (see 03-01-PLAN.md):
+is unit-testable offline. Locked decisions (see 03-01-PLAN.md / 04-01-PLAN.md):
 
-  RUN_DATE        = date(2026, 6, 27)  — project run date ("today").
-  N_MONTHS_DEFAULT = 33                — full period окт.2023–июнь.2026 (velocity / DSI base).
+  RUN_DATE         = date(2026, 6, 27)  — project run date ("today").
+  N_MONTHS_DEFAULT = 33                 — fallback when EAN absent from weekly file (Pitfall 6).
+                                          PRIMARY base for velocity/DSI is months_in_stock
+                                          from parse_ostatki_weekly (Phase 4 contract change).
   DSI = qty_stock / (velocity_per_month / 30); guard: qty_stock NaN/≤0 OR velocity ≤0 -> "".
   Возраст остатка = (RUN_DATE − max(invoice_date по партиям)).days.
   Месяцы сортируются ВСЕГДА через month_sort_key (RU словарь) — порядок parquet не доверять.
+
+Phase 4 additions (single source of truth for all bucket/flag logic):
+  GREEN_THRESHOLD = 20                  — «зелёный товар»: velocity > 20 шт/мес (VISUAL-02).
+  dsi_bucket(v)   → int 0–4            — VISUAL-01 colour bucket.
+  pct_bucket(p)   → int 0–4 | None     — VISUAL-04 5-level % продаж palette.
+  green_item(v)   → bool               — VISUAL-02 flag.
 """
 from __future__ import annotations
 
@@ -79,3 +87,99 @@ def cumulative(pivot: pd.DataFrame) -> pd.DataFrame:
     Caller must pass a pivot whose columns are already month_sort_key-ordered.
     """
     return pivot.cumsum(axis=1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — availability-based bucket / flag functions (VISUAL-01/02/04)
+# Single source of truth used by order_plan, apply_formatting, and presort.
+# ---------------------------------------------------------------------------
+
+# «Зелёный товар» threshold: velocity strictly > GREEN_THRESHOLD шт/мес (VISUAL-02, LOCKED).
+GREEN_THRESHOLD: float = 20.0
+
+
+def dsi_bucket(v) -> int:
+    """Map a DSI value to a colour bucket integer (VISUAL-01, LOCKED thresholds).
+
+    Thresholds (days):
+      <  30  -> 0  red    (горит, critical)
+      30–59  -> 1  yellow (watch)
+      60–89  -> 2  green  (ok)
+      >= 90  -> 3  blue   (overstock)
+      '' / NaN -> 4 (no stock — sort to bottom, no fill)
+
+    Args:
+        v: numeric DSI value (int/float), empty string "", or NaN.
+
+    Returns:
+        int 0–4.
+    """
+    if v == "" or (isinstance(v, float) and pd.isna(v)):
+        return 4
+    try:
+        d = float(v)
+    except (TypeError, ValueError):
+        return 4
+    if pd.isna(d):
+        return 4
+    if d < 30:
+        return 0
+    if d < 60:
+        return 1
+    if d < 90:
+        return 2
+    return 3
+
+
+def pct_bucket(p) -> int | None:
+    """Map % продаж к приходам to a 5-level colour bucket (VISUAL-04, LOCKED).
+
+    Thresholds (fraction 0.0–1.0):
+      < 0.20          -> 0  red
+      0.20 – <0.40    -> 1  orange
+      0.40 – <0.60    -> 2  yellow
+      0.60 – <0.80    -> 3  blue
+      0.80 – 1.0      -> 4  green
+      '' / NaN        -> None (no fill)
+
+    Args:
+        p: fraction value (float 0..1), empty string "", or NaN.
+
+    Returns:
+        int 0–4, or None for missing / sentinel values.
+    """
+    if p == "" or p is None:
+        return None
+    try:
+        frac = float(p)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(frac):
+        return None
+    if frac < 0.20:
+        return 0
+    if frac < 0.40:
+        return 1
+    if frac < 0.60:
+        return 2
+    if frac < 0.80:
+        return 3
+    return 4
+
+
+def green_item(velocity) -> bool:
+    """Return True if velocity strictly exceeds GREEN_THRESHOLD (20 шт/мес) (VISUAL-02).
+
+    Args:
+        velocity: numeric (int/float) или "" / None для товаров без продаж.
+
+    Returns:
+        bool — True means «Зелёный товар» label and Скорость cell gets green fill.
+    """
+    if velocity == "" or velocity is None:
+        return False
+    try:
+        v = float(velocity)
+    except (TypeError, ValueError):
+        return False
+    return v > GREEN_THRESHOLD
