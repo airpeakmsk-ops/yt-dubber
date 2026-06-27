@@ -61,3 +61,37 @@ def mock_cbr_xml() -> str:
         '</Valute>'
         '</ValCurs>'
     )
+
+
+# --- Phase 3 fixtures (interim parquet paths + oracle EANs) -------------------
+
+@pytest.fixture
+def master_cost_path() -> Path:
+    """Phase 2 artifact: 1300 EAN spine with per-EAN cost + партии (приходы)."""
+    return PROJECT_ROOT / "data" / "interim" / "master_cost.parquet"
+
+
+@pytest.fixture
+def prodazhi_path() -> Path:
+    """Phase 1 artifact: long-format monthly sales (ean, month, qty, ...)."""
+    return PROJECT_ROOT / "data" / "interim" / "prodazhi.parquet"
+
+
+@pytest.fixture
+def report_df(master_cost_path, prodazhi_path):
+    """The fully assembled Phase 3 report DataFrame (offline, no network)."""
+    from src.build_report import build_report_df
+
+    return build_report_df(master_cost_path, prodazhi_path)
+
+
+@pytest.fixture
+def oracle_eans() -> list[int]:
+    """Two real EAN with non-zero sales AND positive stock — verified 2026-06-27.
+
+    Used for manual cumulative / stock-age checks. Both have:
+      - has_sales == True, prodazhi qty sum == master qty_sold_total
+      - qty_stock > 0 (so DSI is a real number, not "")
+      - max(invoice_date по партиям) == 2025-05-28
+    """
+    return [4525807270297, 4525807270280]
