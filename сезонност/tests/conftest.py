@@ -95,3 +95,40 @@ def oracle_eans() -> list[int]:
       - max(invoice_date по партиям) == 2025-05-28
     """
     return [4525807270297, 4525807270280]
+
+
+# --- Phase 4 fixtures ---------------------------------------------------------
+
+@pytest.fixture
+def weekly_path() -> Path:
+    """Weekly stock workbook: «остатки по неделям.xlsx» (1С TDSheet, Кон.остаток by week)."""
+    return PROJECT_ROOT / "остатки по неделям.xlsx"
+
+
+@pytest.fixture
+def weekly_months_map(weekly_path):
+    """parse_weekly_stock result: dict[int ean, set[(year, month)]] for all EAN rows."""
+    from src.parse_ostatki_weekly import parse_weekly_stock
+
+    return parse_weekly_stock(weekly_path)
+
+
+@pytest.fixture
+def model_aliases_path() -> Path:
+    """Absolute path to TIMON model_aliases.json (outside the repo)."""
+    return Path("C:/Users/abirv/.claude/shared/timon/model_aliases.json")
+
+
+@pytest.fixture
+def season_map():
+    """Seasonal index dict: cal_month (1..12) -> float.
+
+    Imports src.seasonality lazily so collection doesn't fail before Plan 02
+    creates the module. Falls back to pytest.skip if the module is absent.
+    """
+    seasonality = pytest.importorskip("src.seasonality")
+    prodazhi_path = PROJECT_ROOT / "data" / "interim" / "prodazhi.parquet"
+    import pandas as pd
+
+    prodazhi_df = pd.read_parquet(prodazhi_path)
+    return seasonality.compute_global_seasonal_index(prodazhi_df)

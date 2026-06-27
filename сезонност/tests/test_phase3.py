@@ -78,14 +78,24 @@ def test_cumulative_oracle(report_df, master_cost, prodazhi, oracle_eans):
 
 
 # --- REPORT-04 ---------------------------------------------------------------
-def test_velocity_and_dsi(report_df, master_cost, oracle_eans):
+def test_velocity_and_dsi(report_df, master_cost, oracle_eans, weekly_months_map):
+    """Velocity and DSI now use months_in_stock from weekly file (Phase 4 contract change).
+
+    Fallback for EAN absent from weekly map = N_MONTHS_DEFAULT (33) — backward compat.
+    """
     for ean in oracle_eans:
         row = report_df[report_df["EAN"] == ean].iloc[0]
         mc_row = master_cost[master_cost["ean"] == ean].iloc[0]
-        expected_v = mc_row["qty_sold_total"] / N_MONTHS
-        assert row["Скорость, шт/мес"] == pytest.approx(expected_v, abs=1e-6)
+        # Phase 4 contract: use actual months_in_stock; fallback 33 if absent from weekly
+        m = weekly_months_map.get(ean, N_MONTHS)
+        expected_v = mc_row["qty_sold_total"] / m
+        assert row["Скорость, шт/мес"] == pytest.approx(expected_v, abs=1e-6), (
+            f"EAN {ean}: velocity mismatch (months_in_stock={m})"
+        )
         expected_dsi = round(mc_row["qty_stock"] / (expected_v / 30), 1)
-        assert row["DSI, дней"] == pytest.approx(expected_dsi)
+        assert row["DSI, дней"] == pytest.approx(expected_dsi), (
+            f"EAN {ean}: DSI mismatch (months_in_stock={m})"
+        )
     # NaN stock -> DSI ""
     nan_row = report_df[report_df["EAN"] == NAN_STOCK_EAN].iloc[0]
     assert nan_row["DSI, дней"] == ""
@@ -166,12 +176,25 @@ def test_write_is_idempotent_mocked():
 
 
 # --- serializability ---------------------------------------------------------
+@pytest.mark.xfail(
+    reason="84 cols (ANALYTIC block M-R) delivered in Plan 04-04; currently 78 cols",
+    strict=False,
+)
 def test_df_to_rows_serializable(report_df):
+    """Column count updated to 84 (Phase 4 layout: 10 base + 2 cum_summary + 6 analytic + 33 monthly + 33 cum).
+
+    XFAIL until Plan 04-04 adds the ANALYTIC block to build_report.py.
+    When that plan runs it will remove the xfail marker and assert 84.
+    """
     rows = df_to_rows(report_df)
     assert isinstance(rows, list)
     assert all(isinstance(r, list) for r in rows)
     assert len(rows) == 1301  # header + 1300 data rows
     assert rows[0] == list(report_df.columns)
+    # Phase 4 column count: 84 (BASE 10 + CUM_SUMMARY 2 + ANALYTIC 6 + monthly 33 + cum 33)
+    assert len(rows[0]) == 84, (
+        f"Expected 84 columns after Phase 4 ANALYTIC block, got {len(rows[0])}"
+    )
     for r in rows:
         for cell in r:
             assert not isinstance(cell, date), f"date leaked: {cell!r}"
