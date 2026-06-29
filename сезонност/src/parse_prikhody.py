@@ -42,6 +42,16 @@ COL_QTY = 20
 COL_PRICE = 25
 COL_TOTAL = 28
 
+# Файлы, исключаемые из приходов (решение пользователя 2026-06-29).
+# «4 приход .xlsx» = Накладная №2 от 01.02.2024 — НЕ настоящий приход (возврат/переучёт).
+# Проверено: все 72 EAN этой накладной есть в других приходах → исключение не теряет товаров.
+EXCLUDED_PRIKHOD_FILES = {"4 приход .xlsx"}
+
+# ⛔ Семантика колонки «Цена» зависит от типа файла (CODE_DOMAIN: multi-source one-column trap):
+#   - файлы «в рублях/» (rate_source=cbr_api): цена УЖЕ в рублях
+#   - файлы «X приход курс YY,YY» (rate_source=filename): цена в ВАЛЮТЕ (USD), курс в имени
+#     переводит её в рубли → price_rub = цена * курс. Иначе compute_cost делит на курс повторно.
+
 _RATE_RE = re.compile(r"(?:приход|курс)\s+([\d,\.]+)")
 
 _RU_MONTHS = {
@@ -105,11 +115,15 @@ def parse_prikhod_file(path, cbr_cache: dict) -> list[dict]:
         ean = normalize_ean(ean_raw)
         if ean is None:  # samples (9999...) and residual noise
             continue
+        raw_price = row[COL_PRICE]
+        # «курс в имени» -> цена в валюте (USD); переводим в рубли (см. примечание у COL_PRICE).
+        # «в рублях» -> цена уже в рублях, оставляем как есть.
+        price_rub = raw_price * rate if rate_source == "filename" else raw_price
         records.append({
             "ean": ean,
             "name": row[COL_NAME],
             "qty": row[COL_QTY],
-            "price_rub": row[COL_PRICE],
+            "price_rub": price_rub,
             "invoice_date": invoice_date,
             "rate_usd": rate,
             "rate_source": rate_source,
@@ -131,6 +145,8 @@ def parse_all_prikhody(cbr_cache: dict | None = None) -> pd.DataFrame:
     files = sorted(p for p in PRIKHOD_DIR.glob("*.xlsx"))
     # 5 files без курса (CBR by invoice date).
     files += sorted(PRIKHOD_RUB_DIR.glob("*.xlsx"))
+    # Исключённые накладные (не приходы — решение пользователя).
+    files = [p for p in files if p.name not in EXCLUDED_PRIKHOD_FILES]
 
     records: list[dict] = []
     for path in files:

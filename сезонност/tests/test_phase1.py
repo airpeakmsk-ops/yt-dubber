@@ -77,14 +77,20 @@ def test_parse_prikhod_basic(prikhod_dir):
 
 
 def test_all_prikhod_files_parse(prikhod_dir, prikhod_rub_dir):
-    """All 21 source files parse, are represented, and yield a sane EAN count."""
-    from src.parse_prikhody import parse_all_prikhody
+    """All source files parse, are represented, and yield a sane EAN count.
+
+    20 files = 16 (с курсом) + 5 (в рублях) − 1 исключённая Накладная №2
+    («4 приход .xlsx», не приход — решение пользователя 2026-06-29, см. EXCLUDED_PRIKHOD_FILES).
+    """
+    from src.parse_prikhody import EXCLUDED_PRIKHOD_FILES, parse_all_prikhody
 
     df = parse_all_prikhody()
 
     assert len(df) > 0
-    # 16 (с курсом) + 5 (в рублях) = 21 source files represented
-    assert df["source_file"].nunique() == 21
+    # 16 (с курсом) + 5 (в рублях) − len(EXCLUDED) source files represented
+    assert df["source_file"].nunique() == 21 - len(EXCLUDED_PRIKHOD_FILES)
+    # исключённые файлы НЕ должны присутствовать
+    assert EXCLUDED_PRIKHOD_FILES.isdisjoint(set(df["source_file"]))
     # ~1300 spine EANs per RESEARCH — assert a floor, not a brittle exact number
     assert df["ean"].nunique() > 1000
 

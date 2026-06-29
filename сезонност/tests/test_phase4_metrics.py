@@ -38,11 +38,14 @@ except ImportError:
 # order_plan functions — added in Task 1 (04-03).
 try:
     from src.order_plan import (
+        SELL_THROUGH_COL,
         compute_order_qty,
         is_dead,
+        is_priority_eligible,
         is_stale,
         pct_sales,
         presort_by_dsi,
+        sell_through_last_batch,
     )
     _ORDER_PLAN_AVAILABLE = True
 except ImportError:
@@ -257,4 +260,45 @@ def test_presort_secondary_dsi_asc():
     names = sorted_df["name"].tolist()
     assert names == ["r10", "r20", "r25"], (
         f"Within red bucket, DSI should be ascending: got {names}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Priority sell-through gate (70%, user 2026-06-29)
+# ---------------------------------------------------------------------------
+
+@_skip_order
+def test_sell_through_last_batch():
+    """Доля = продано после посл. закупки / qty последней партии."""
+    assert sell_through_last_batch(100, 70) == pytest.approx(0.70)
+    assert sell_through_last_batch(200, 50) == pytest.approx(0.25)
+    assert sell_through_last_batch(0, 5) == ""      # нет данных о последней закупке
+    assert sell_through_last_batch(None, 5) == ""
+    assert sell_through_last_batch(100, 0) == pytest.approx(0.0)
+
+
+@_skip_order
+def test_is_priority_eligible():
+    """>= 70% распродажи последней партии = eligible (попадает в приоритет)."""
+    assert is_priority_eligible(0.70) is True
+    assert is_priority_eligible(0.95) is True
+    assert is_priority_eligible(0.69) is False
+    assert is_priority_eligible(0.0) is False
+    assert is_priority_eligible("") is False        # нет данных -> не приоритет
+
+
+@_skip_order
+def test_presort_demotes_low_sellthrough():
+    """Товар, распродавший < 70% последней партии, уходит ВНИЗ даже при малом DSI (красный)."""
+    df = pd.DataFrame({
+        "DSI, дней": [5, 100, 8],                       # urgent(red), blue, urgent(red)
+        SELL_THROUGH_COL: [0.10, 0.90, 0.95],           # 1й — низкая распродажа
+        "name": ["red_low_sellthru", "blue_ok", "red_ok"],
+    })
+    sorted_df = presort_by_dsi(df)
+    names = sorted_df["name"].tolist()
+    # eligible сначала (red_ok=8, blue_ok=100), потом демотированный red_low_sellthru
+    assert names[0] == "red_ok", f"eligible red должен быть первым: {names}"
+    assert names[-1] == "red_low_sellthru", (
+        f"низкая распродажа последней партии -> вниз, даже при DSI=5: {names}"
     )

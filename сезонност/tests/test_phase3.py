@@ -178,19 +178,18 @@ def test_write_is_idempotent_mocked():
 
 # --- serializability ---------------------------------------------------------
 def test_df_to_rows_serializable(report_df):
-    """Column count updated to 84 (Phase 4 layout: 10 base + 2 cum_summary + 6 analytic + 33 monthly + 33 cum).
+    """Column count = 85 (Phase 4 layout: 10 base + 2 cum_summary + 7 analytic + 33 monthly + 33 cum).
 
-    XFAIL until Plan 04-04 adds the ANALYTIC block to build_report.py.
-    When that plan runs it will remove the xfail marker and assert 84.
+    7th analytic col «Распродажа посл. партии, %» added 2026-06-29 (priority gate).
     """
     rows = df_to_rows(report_df)
     assert isinstance(rows, list)
     assert all(isinstance(r, list) for r in rows)
     assert len(rows) == 1301  # header + 1300 data rows
     assert rows[0] == list(report_df.columns)
-    # Phase 4 column count: 84 (BASE 10 + CUM_SUMMARY 2 + ANALYTIC 6 + monthly 33 + cum 33)
-    assert len(rows[0]) == 84, (
-        f"Expected 84 columns after Phase 4 ANALYTIC block, got {len(rows[0])}"
+    # Phase 4 column count: 85 (BASE 10 + CUM_SUMMARY 2 + ANALYTIC 7 + monthly 33 + cum 33)
+    assert len(rows[0]) == 85, (
+        f"Expected 85 columns after Phase 4 ANALYTIC block, got {len(rows[0])}"
     )
     for r in rows:
         for cell in r:

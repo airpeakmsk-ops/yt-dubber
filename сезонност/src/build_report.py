@@ -6,11 +6,12 @@ long-format monthly sales (prodazhi.parquet) and the weekly stock file
   - base columns A..J (cost, приходы, остаток, продано, возраст, скорость, DSI)
     NB: Скорость/DSI are now AVAILABILITY-BASED (months_in_stock from weekly file).
   - «Накопит. приходы» / «Накопит. продажи» (REPORT-03 summary)
-  - 6 analytical columns M..R (% продаж, Зелёный, Индекс сезона, К заказу, Мёртвый, Залежалый)
+  - 7 analytical columns M..S (% продаж, Зелёный, Индекс сезона, К заказу, Мёртвый,
+    Залежалый, Распродажа посл. партии %)
   - 33 monthly sales columns, chronological via month_sort_key (REPORT-02)
   - 33 «Кум. …» monthly cumulative sales columns (REPORT-03 manual-checkable)
 
-Final layout: 84 columns (10 BASE + 2 CUM_SUMMARY + 6 ANALYTIC + 33 monthly + 33 cum).
+Final layout: 85 columns (10 BASE + 2 CUM_SUMMARY + 7 ANALYTIC + 33 monthly + 33 cum).
 Rows are presorted: red (DSI<30) first, within bucket by DSI ascending (VISUAL-03).
 
 NO network, NO gspread — Sheets writing lives in report_to_sheets. df_to_rows() converts
@@ -70,6 +71,7 @@ ANALYTIC_COLS = [
     "К заказу на 2 мес",
     "Мёртвый",
     "Залежалый",
+    "Распродажа посл. партии, %",  # col S — priority gate (user 2026-06-29)
 ]
 
 
@@ -79,20 +81,22 @@ def build_report_df(
     n_months: int = N_MONTHS_DEFAULT,
     weekly_path: pathlib.Path | None = None,
 ) -> pd.DataFrame:
-    """Build the report DataFrame: 1300 rows (all EAN spine) × 84 columns.
+    """Build the report DataFrame: 1300 rows (all EAN spine) × 85 columns.
 
     Velocity and DSI are now AVAILABILITY-BASED: each EAN uses months_in_stock
     from the weekly stock file instead of the fixed n_months period.
     Fallback to n_months (default 33) for EAN absent from weekly file (Pitfall 6).
 
-    Column layout (84):
-      A..J  BASE_COLS (10)
-      K..L  CUM_SUMMARY_COLS (2)
-      M..R  ANALYTIC_COLS (6): % продаж, Зелёный, Индекс сезона, К заказу, Мёртвый, Залежалый
-      S..AX  33 monthly sales columns
-      AY..BZ 33 «Кум. » columns
+    Column layout (85):
+      A..J   BASE_COLS (10)
+      K..L   CUM_SUMMARY_COLS (2)
+      M..S   ANALYTIC_COLS (7): % продаж, Зелёный, Индекс сезона, К заказу, Мёртвый,
+             Залежалый, Распродажа посл. партии %
+      T..BA  33 monthly sales columns
+      BB..CG 33 «Кум. » columns
 
-    Rows are presorted: red (DSI<30) first, secondary DSI ascending (VISUAL-03).
+    Rows are presorted by priority: товары, распродавшие < 70% последней партии,
+    демотируются вниз; затем red (DSI<30) first, secondary DSI ascending (VISUAL-03).
     """
     master = pd.read_parquet(master_cost_path)
     pro = pd.read_parquet(prodazhi_path)

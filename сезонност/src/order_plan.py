@@ -43,6 +43,14 @@ from src.report_metrics import dsi_bucket, green_item, sht_per_month, dsi_days  
 # ORDER-01 threshold (LOCKED): pct_sales must be >= 60% to be eligible for reorder.
 ORDER_THRESHOLD: float = 0.60
 
+# Priority sell-through gate (user 2026-06-29): товары, у которых продано < 70%
+# от ПОСЛЕДНЕЙ закупки (после её даты), НЕ должны попадать в приоритет дозаказа
+# (верх списка / малый DSI). Они демотируются в presort, цвет DSI сохраняется.
+PRIORITY_SELL_THROUGH_THRESHOLD: float = 0.70
+
+# Имя колонки доли распродажи последней партии (используется presort для приоритета).
+SELL_THROUGH_COL: str = "Распродажа посл. партии, %"
+
 # SEASON-02: Dead-stock cutoff — last 12 months relative to RUN_DATE 2026-06-27.
 # Window: July 2025 (2025, 7) .. June 2026 (2026, 6), inclusive.
 DEAD_CUTOFF: tuple[int, int] = (2025, 7)
@@ -79,6 +87,51 @@ def pct_sales(qty_sold_total, qty_prikhod) -> float | str:
     except (TypeError, ValueError):
         return ""
     return s / p
+
+
+# ---------------------------------------------------------------------------
+# Priority gate: распродажа последней партии
+# ---------------------------------------------------------------------------
+
+def sell_through_last_batch(last_qty, sold_after) -> float | str:
+    """Доля распродажи последней партии: sold_after / last_qty (user 2026-06-29).
+
+    last_qty:    кол-во последнего прихода (самая свежая партия по дате накладной).
+    sold_after:  продано штук ПОСЛЕ месяца последнего прихода (строго позже).
+
+    Returns float >= 0 if last_qty > 0, else "" (нет данных о последней закупке).
+    """
+    if last_qty is None:
+        return ""
+    try:
+        lq = float(last_qty)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(lq) or lq <= 0:
+        return ""
+    try:
+        sa = float(sold_after)
+    except (TypeError, ValueError):
+        sa = 0.0
+    if pd.isna(sa):
+        sa = 0.0
+    return sa / lq
+
+
+def is_priority_eligible(sell_through) -> bool:
+    """True если товар может попадать в приоритет дозаказа (распродажа посл. партии >= 70%).
+
+    sell_through: доля (float) или "" (нет данных) -> НЕ eligible (демотируется).
+    """
+    if sell_through == "" or sell_through is None:
+        return False
+    try:
+        v = float(sell_through)
+    except (TypeError, ValueError):
+        return False
+    if pd.isna(v):
+        return False
+    return v >= PRIORITY_SELL_THROUGH_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -197,26 +250,33 @@ def is_stale(dsi_val, age_days: float, recent_12mo_sales: float) -> bool:
 # ---------------------------------------------------------------------------
 
 def presort_by_dsi(df: pd.DataFrame) -> pd.DataFrame:
-    """Sort DataFrame so red-bucket rows appear first, then yellow, green, blue, empty last.
+    """Sort so the TOP is the actionable reorder priority list (user 2026-06-29).
 
-    Primary key:   dsi_bucket(DSI, дней) ascending (0=red..4=no_stock).
-    Secondary key: numeric DSI ascending within each bucket (lowest DSI = most urgent first).
-    '' / NaN DSI -> bucket 4 (sorted to bottom); numeric key = 9999.
+    Primary key:   приоритет-годность — товары, распродавшие < 70% последней партии,
+                   демотируются ВНИЗ (не попадают в приоритет). Eligible=0, иначе=1.
+                   Если колонки SELL_THROUGH_COL нет (юнит-тесты presort) — все eligible.
+    Secondary key: dsi_bucket(DSI, дней) ascending (0=red..4=no_stock).
+    Tertiary key:  numeric DSI ascending within bucket (lowest DSI = most urgent first).
+    '' / NaN DSI -> bucket 4 (low); numeric key = 9999.
 
+    Цвет DSI (VISUAL-01) НЕ зависит от сортировки — демотированные строки сохраняют заливку.
     Does NOT modify the input DataFrame — returns a sorted copy with reset index.
-    Temporary columns _b and _d are dropped before returning.
 
     Args:
-        df: DataFrame with column «DSI, дней» (numeric or "" sentinel).
+        df: DataFrame with column «DSI, дней» (и опционально SELL_THROUGH_COL).
 
     Returns:
         Sorted copy of df with index reset to 0..N-1.
     """
     df = df.copy()
+    if SELL_THROUGH_COL in df.columns:
+        df["_e"] = df[SELL_THROUGH_COL].map(lambda v: 0 if is_priority_eligible(v) else 1)
+    else:
+        df["_e"] = 0  # presort unit-tests pass a df without the sell-through column
     df["_b"] = df["DSI, дней"].map(dsi_bucket)
     df["_d"] = pd.to_numeric(df["DSI, дней"], errors="coerce").fillna(9999)
-    df = df.sort_values(["_b", "_d"], ascending=[True, True])
-    return df.drop(columns=["_b", "_d"]).reset_index(drop=True)
+    df = df.sort_values(["_e", "_b", "_d"], ascending=[True, True, True])
+    return df.drop(columns=["_e", "_b", "_d"]).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +347,39 @@ def enrich_df(
         recent_df = prodazhi_df[prodazhi_df["_sk"] >= DEAD_CUTOFF]
         recent_sales_map = recent_df.groupby("ean")["qty"].sum().to_dict()
 
+    # --- last-batch sell-through maps (priority gate, user 2026-06-29) ------------
+    # last_month_map[ean] = (year, month) последней партии; last_qty_map[ean] = её qty.
+    last_month_map: dict = {}
+    last_qty_map: dict = {}
+    if "partii" in master_df.columns and "ean" in master_df.columns:
+        for ean_v, partii in zip(master_df["ean"], master_df["partii"]):
+            try:
+                last_dt = max(p["invoice_date"] for p in partii)
+            except (ValueError, TypeError, KeyError):
+                continue
+            lm = (last_dt.year, last_dt.month)
+            lq = sum(
+                p["qty"] for p in partii
+                if (p["invoice_date"].year, p["invoice_date"].month) == lm
+            )
+            last_month_map[ean_v] = lm
+            last_qty_map[ean_v] = lq
+
+    # sold_after_map[ean] = продано штук СТРОГО ПОСЛЕ месяца последней партии.
+    sold_after_map: dict = {}
+    pro_sk = prodazhi_df
+    if "sort_key" not in pro_sk.columns and "month" in pro_sk.columns:
+        from src.report_metrics import month_sort_key as _msk2
+        pro_sk = pro_sk.copy()
+        pro_sk["sort_key"] = pro_sk["month"].map(_msk2)
+    if "sort_key" in pro_sk.columns and last_month_map:
+        sub = pro_sk[["ean", "sort_key", "qty"]].copy()
+        sub["_lm"] = sub["ean"].map(last_month_map)
+        sub = sub[sub["_lm"].notna()]
+        mask = [sk > lm for sk, lm in zip(sub["sort_key"], sub["_lm"])]
+        sub = sub[pd.Series(mask, index=sub.index)]
+        sold_after_map = sub.groupby("ean")["qty"].sum().to_dict()
+
     # EAN column — first column of df
     ean_col = df.columns[0]  # «EAN» or similar
 
@@ -296,6 +389,7 @@ def enrich_df(
     rows_order = []
     rows_dead = []
     rows_stale = []
+    rows_sellthru = []
 
     for _, row in df.iterrows():
         ean = row[ean_col]
@@ -329,6 +423,10 @@ def enrich_df(
         stale = (not dead) and is_stale(dsi_val, age, recent)
         rows_stale.append("Залежалый" if stale else "")
 
+        # Распродажа посл. партии, % (col S) — priority gate (user 2026-06-29)
+        st = sell_through_last_batch(last_qty_map.get(ean), sold_after_map.get(ean, 0))
+        rows_sellthru.append(round(st, 3) if st != "" else "")
+
     df = df.copy()
     df["% продаж к приходам"] = rows_pct
     df["Зелёный товар"] = rows_green
@@ -336,5 +434,6 @@ def enrich_df(
     df["К заказу на 2 мес"] = rows_order
     df["Мёртвый"] = rows_dead
     df["Залежалый"] = rows_stale
+    df[SELL_THROUGH_COL] = rows_sellthru
 
     return df

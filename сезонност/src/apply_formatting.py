@@ -16,8 +16,8 @@ Colour rules (LOCKED, per 04-CONTEXT.md / 04-RESEARCH.md Паттерн 5):
     < 20%    -> red    #F4CCCC
     20–39%   -> orange #F9CB9C  {r:0.976, g:0.796, b:0.612}
     40–59%   -> yellow #FFE599  {r:1.000, g:0.898, b:0.600}
-    60–79%   -> blue   #CFE2F3
-    80–100%  -> green  #D9EAD3
+    60–79%   -> blue   #6FA8DC  {r:0.435, g:0.659, b:0.863}  (контраст, user 2026-06-29)
+    80–100%  -> green  #93C47D  {r:0.576, g:0.769, b:0.490}  (контраст, user 2026-06-29)
     "" / NaN -> no fill (pct_bucket == None)
 
   Скорость, шт/мес (col I) — green if green_item (velocity > 20) (VISUAL-02):
@@ -56,6 +56,11 @@ _ORANGE = {"red": 0.976, "green": 0.796, "blue": 0.612}   # #F9CB9C
 _LTYELW = {"red": 1.000, "green": 0.898, "blue": 0.600}   # #FFE599
 _GRNITM = {"red": 0.714, "green": 0.843, "blue": 0.659}   # #B6D7A8 (green-item)
 
+# Более контрастные зелёный/синий для колонки «% продаж» (M) — запрос пользователя
+# 2026-06-29. DSI (J) оставляем на бледных _GREEN/_BLUE (пользователь: J ок).
+_PCT_GREEN = {"red": 0.576, "green": 0.769, "blue": 0.490}  # #93C47D (насыщ. зелёный)
+_PCT_BLUE  = {"red": 0.435, "green": 0.659, "blue": 0.863}  # #6FA8DC (насыщ. синий)
+
 # DSI bucket index -> colour (bucket 4 = no fill -> None)
 _DSI_BUCKET_COLOUR = {
     0: _RED,
@@ -65,13 +70,13 @@ _DSI_BUCKET_COLOUR = {
     4: None,
 }
 
-# pct_bucket index -> colour (None = no fill)
+# pct_bucket index -> colour (None = no fill). Зелёный/синий — контрастные (_PCT_*).
 _PCT_BUCKET_COLOUR = {
     0: _RED,
     1: _ORANGE,
     2: _LTYELW,
-    3: _BLUE,
-    4: _GREEN,
+    3: _PCT_BLUE,
+    4: _PCT_GREEN,
     None: None,
 }
 
