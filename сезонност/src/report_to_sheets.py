@@ -29,6 +29,7 @@ from src.order_finalize import (                          # noqa: E402
     apply_report_order_adjustment,
     build_coverage_block,
     build_order_rows,
+    move_excluded_to_bottom,
     parse_already_ordered,
     parse_dealer_wants,
     parse_exclude,
@@ -137,8 +138,10 @@ def main() -> None:
     # 1. «Ближайший заказ» — из ИСХОДНОГО прогноза (до вычета «уже заказано»).
     order_rows = build_order_rows(df, excluded, already, wants)
 
-    # 2. Отчёт: скорректировать «К заказу» (исключить -> 0; − уже заказано).
+    # 2. Отчёт: скорректировать «К заказу» (исключить -> 0; − уже заказано),
+    #    затем перенести исключённые товары в самый низ листа.
     df_report = apply_report_order_adjustment(df, excluded, already)
+    df_report = move_excluded_to_bottom(df_report, excluded)
     rows = df_to_rows(df_report)
     n = write_report(ss, WORKSHEET_TITLE, rows)
     print(f"Записано строк: {n} в лист «{WORKSHEET_TITLE}»")

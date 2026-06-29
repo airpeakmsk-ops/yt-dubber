@@ -284,8 +284,14 @@ def presort_by_dsi(df: pd.DataFrame) -> pd.DataFrame:
         df["_e"] = 0  # presort unit-tests pass a df without the sell-through column
     df["_b"] = df["DSI, дней"].map(dsi_bucket)
     df["_d"] = pd.to_numeric(df["DSI, дней"], errors="coerce").fillna(9999)
-    df = df.sort_values(["_e", "_b", "_d"], ascending=[True, True, True])
-    return df.drop(columns=["_e", "_b", "_d"]).reset_index(drop=True)
+    # Доп. ключ: внутри одинакового DSI (в т.ч. DSI=0 распроданных) — скорость по убыванию
+    # (самые ходовые выше). Сортируем по −скорость как возрастающий ключ.
+    if "Скорость, шт/мес" in df.columns:
+        df["_v"] = -pd.to_numeric(df["Скорость, шт/мес"], errors="coerce").fillna(0.0)
+    else:
+        df["_v"] = 0.0
+    df = df.sort_values(["_e", "_b", "_d", "_v"], ascending=[True, True, True, True])
+    return df.drop(columns=["_e", "_b", "_d", "_v"]).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------

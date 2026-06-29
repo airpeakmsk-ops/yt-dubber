@@ -19,12 +19,33 @@
 """
 from __future__ import annotations
 
+import math
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from src.normalize import normalize_ean  # noqa: E402
+
+# Приманка = воблер/блесна (округление заказа вверх до кратного 4). Иначе аксессуар
+# (спиннинг/подсак/крючки/прочее) — округление вверх до целого без кратности.
+_LURE_RE = re.compile(r"воблер|блесн", re.IGNORECASE)
+ORDER_MULTIPLE_LURE = 4
+
+
+def is_lure(name: str) -> bool:
+    """True для воблеров/блёсен (по названию). Иначе аксессуар."""
+    return bool(_LURE_RE.search(str(name)))
+
+
+def round_order_qty(qty: float, name: str) -> int:
+    """Округление заказа ВВЕРХ: приманка -> кратно 4; аксессуар -> целое."""
+    if qty <= 0:
+        return 0
+    if is_lure(name):
+        return int(math.ceil(qty / ORDER_MULTIPLE_LURE) * ORDER_MULTIPLE_LURE)
+    return int(math.ceil(qty))
 
 
 def _num(x) -> float:
@@ -149,56 +170,97 @@ def apply_report_order_adjustment(df, excluded: set[int], already_ordered: dict[
     return df
 
 
+_STOCK_COL = "Остаток"
+_VEL_COL = "Скорость, шт/мес"
+
+
 def build_order_rows(df, excluded: set[int], already_ordered: dict[int, float],
                      dealer_wants: dict[int, float]) -> list[list]:
-    """Строки листа «ближайший заказ»: EAN, наим., себест, кол-во, сумма + ИТОГО.
+    """Строки листа «ближайший заказ».
 
-    Кол-во = max(0, max(прогноз, хотелки) − уже_заказано); исключённые -> 0.
-    Себестоимость — из df (cost_usd_wavg). Сортировка по сумме строки убыв.
+    Колонки: EAN, Наименование, Себестоимость USD, Текущее наличие, Скорость шт/мес,
+             Кол-во к заказу, Для дилеров, Сумма USD  (+ строка ИТОГО).
+
+    Кол-во (сырое) = max(0, max(прогноз, хотелки) − уже_заказано); исключённые -> 0.
+    Округление ВВЕРХ: приманка (воблер/блесна) -> кратно 4; аксессуар -> целое.
+    Для дилеров = min(хотелки, округл. кол-во) — забронированная под дилеров часть.
+    Сумма = округл. кол-во × себест. Сортировка по сумме строки убыв.
     Прогноз берётся ИЗ ИСХОДНОГО df (до adjust), чтобы не вычесть «уже заказано» дважды.
     """
-    header = ["EAN", "Наименование", "Себестоимость USD", "Кол-во к заказу", "Сумма USD"]
+    header = ["EAN", "Наименование", "Себестоимость USD", "Текущее наличие",
+              "Скорость шт/мес", "Кол-во к заказу", "Для дилеров", "Сумма USD"]
     body: list[list] = []
-    total_qty = 0.0
+    total_qty = 0
+    total_dealer = 0
     total_sum = 0.0
     for row in df.itertuples(index=False):
         d = dict(zip(df.columns, row))
         e = int(d[_EAN_COL])
-        qty = final_order_qty(
+        name = d.get(_NAME_COL, "")
+        raw_qty = final_order_qty(
             d.get(_PROG_COL, ""), dealer_wants.get(e, 0.0),
             already_ordered.get(e, 0.0), e in excluded,
         )
-        if qty <= 0:
+        if raw_qty <= 0:
             continue
+        qty = round_order_qty(raw_qty, name)            # округление вверх по типу товара
         cost = d.get(_COST_COL, 0.0)
         cost = float(cost) if cost not in ("", None) else 0.0
+        stock = d.get(_STOCK_COL, "")
+        stock = float(stock) if stock not in ("", None) else 0.0
+        vel = d.get(_VEL_COL, "")
+        vel = round(float(vel), 2) if vel not in ("", None) else 0.0
+        for_dealers = int(min(max(0.0, dealer_wants.get(e, 0.0)), qty))
         line = round(qty * cost, 2)
         total_qty += qty
+        total_dealer += for_dealers
         total_sum += line
-        body.append([e, d.get(_NAME_COL, ""), round(cost, 2), qty, line])
-    body.sort(key=lambda r: r[4], reverse=True)
-    return [header] + body + [["ИТОГО", "", "", round(total_qty, 1), round(total_sum, 2)]]
+        body.append([e, name, round(cost, 2), stock, vel, qty, for_dealers, line])
+    body.sort(key=lambda r: r[7], reverse=True)
+    return [header] + body + [
+        ["ИТОГО", "", "", "", "", total_qty, total_dealer, round(total_sum, 2)]
+    ]
+
+
+def move_excluded_to_bottom(df, excluded: set[int]):
+    """Стабильно перенести исключённые EAN в самый низ (сохраняя текущий порядок прочих)."""
+    df = df.copy()
+    df["_exc"] = [1 if int(e) in excluded else 0 for e in df[_EAN_COL]]
+    df = df.sort_values("_exc", kind="stable")
+    return df.drop(columns=["_exc"]).reset_index(drop=True)
 
 
 def build_coverage_block(dealer_values: list[list[str]], factory_avail: dict[int, float],
                          header_marker: str = "ХОТЕЛКИ") -> list[list]:
     """Блок из 3 колонок, выровненный по строкам листа «надо дилерам».
 
-    Для строки с валидным EAN: [доступно_завод | "", покроется, не_закроется].
-    Для строки-заголовка (содержит header_marker) — подписи колонок.
-    Прочие строки — пустые. dealer_wants берём из col2 той же строки.
+    ⛔ Лимит завода — КОНЕЧНЫЙ пул по EAN. Если EAN повторяется в нескольких строках
+    (несколько дилеров), пул РАСПРЕДЕЛЯЕТСЯ жадно по порядку строк (а не дублируется):
+      покроется(строка) = min(хотелки_строки, остаток_пула); остаток_пула −= покроется.
+    Колонки: [Доступно завод (всего, только в 1-й строке EAN), Покроется, Не закроется].
+    EAN без лимита в листе -> без ограничения (покроется = хотелки, не закроется 0).
     """
+    remaining: dict[int, float] = {}   # остаток пула завода по EAN (расходуется по строкам)
+    seen: set[int] = set()             # для показа «всего» только в первой строке EAN
     block: list[list] = []
     for row in dealer_values:
         e = normalize_ean(row[0]) if row else None
         if e is not None:
+            e = int(e)
             hot = _num(row[2]) if len(row) > 2 else 0.0
-            avail = factory_avail.get(int(e))
-            covered, unmet = dealer_coverage(hot, avail)
-            avail_cell = "" if avail is None else round(float(avail), 1)
-            block.append([avail_cell, round(covered, 1), round(unmet, 1)])
+            if e in factory_avail:
+                if e not in remaining:
+                    remaining[e] = max(0.0, float(factory_avail[e]))
+                covered = min(max(0.0, hot), remaining[e])
+                remaining[e] -= covered
+                unmet = max(0.0, hot - covered)
+                total_cell = round(float(factory_avail[e]), 1) if e not in seen else ""
+            else:
+                covered, unmet, total_cell = max(0.0, hot), 0.0, ""  # нет лимита -> без огр.
+            seen.add(e)
+            block.append([total_cell, round(covered, 1), round(unmet, 1)])
         elif row and any(header_marker in str(c) for c in row):
-            block.append(["Доступно завод", "Покроется", "Не закроется"])
+            block.append(["Доступно завод (всего)", "Покроется", "Не закроется"])
         else:
             block.append(["", "", ""])
     return block
