@@ -68,14 +68,15 @@ def test_avg_next2_index(season_map):
 
 
 def test_global_index_oracle_values(season_map):
-    """Cross-check individual oracle indices from RESEARCH.md (tolerance ±0.05)."""
+    """Cross-check oracle indices (tolerance ±0.05). Источник продаж — леджер
+    «приходы остатки.xlsx» (нетто-реализации), пересчитано 2026-06-29."""
     oracle = {
-        1: 0.349,   # January  — low
-        4: 1.516,   # April    — spring peak
-        7: 1.211,   # July
-        8: 0.328,   # August   — summer dip
-        9: 1.623,   # September — autumn peak
-        10: 1.439,  # October
+        1: 0.218,   # January  — low
+        4: 1.304,   # April    — spring peak
+        7: 1.105,   # July
+        8: 0.373,   # August   — summer dip
+        9: 1.701,   # September — autumn peak
+        10: 1.315,  # October
     }
     for month, expected in oracle.items():
         assert abs(season_map[month] - expected) < 0.05, (

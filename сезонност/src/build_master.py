@@ -41,6 +41,7 @@ INTERIM = pathlib.Path("data/interim")
 PRIKHODY_PATH = INTERIM / "prikhody.parquet"
 PRODAZHI_PATH = INTERIM / "prodazhi.parquet"
 OSTATKI_PATH = INTERIM / "ostatki.parquet"
+PRIKHOD_LEDGER_PATH = INTERIM / "prikhod_ledger.parquet"
 MASTER_PATH = INTERIM / "master.parquet"
 UNMATCHED_PATH = INTERIM / "unmatched_report.json"
 
@@ -96,6 +97,15 @@ def build_master() -> tuple[pd.DataFrame, dict]:
 
     # --- master frame: приходы spine + left-joined остатки + sales link ---------
     master = _aggregate_prikhody(pri)
+    # qty_prikhod (кол-во приходов) — из ЛЕДЖЕРА «приходы остатки.xlsx»
+    # (Поступление − Возврат поставщику), решение пользователя 2026-06-29. Накладные
+    # остаются ТОЛЬКО источником цен (partii) для себестоимости. Fallback на сумму
+    # накладных, если EAN нет в леджере. n_partii/partii не трогаем (цена/возраст).
+    if PRIKHOD_LEDGER_PATH.exists():
+        led = pd.read_parquet(PRIKHOD_LEDGER_PATH).set_index("ean")["qty_prikhod"].to_dict()
+        master["qty_prikhod"] = [
+            float(led.get(int(e), nak)) for e, nak in zip(master["ean"], master["qty_prikhod"])
+        ]
 
     # Left-join free stock. EAN без строки остатка = распродан -> остаток 0 (НЕ NaN),
     # иначе колонка F пустая, DSI не считается и распроданный товар выпадает из дозаказа
