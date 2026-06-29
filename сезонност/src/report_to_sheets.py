@@ -109,7 +109,7 @@ def build_season_rows(prodazhi_path: pathlib.Path = PRODAZHI_PATH) -> list[list]
     return rows
 
 
-def main() -> None:
+def main() -> int:
     """Живой прогон: записать лист «Отчёт» + заливку + лист «Сезонность».
 
     Порядок операций:
@@ -117,6 +117,8 @@ def main() -> None:
       2. write_report(ss, «Отчёт», rows) — идемпотентно clear+update.
       3. format_sheet(ws, df) — один ws.batch_format() вызов (цвет DSI/pct/green).
       4. build_season_rows() → season_rows; write_report(ss, «Сезонность», season_rows).
+
+    Возвращает int — число строк листа «Отчёт» (контракт для бота «обновлено N строк»).
 
     Касается сети — запускать вручную после human-verify gate.
     НЕ вызывается автоматически ни в pytest, ни при импорте модуля.
@@ -165,6 +167,8 @@ def main() -> None:
     season_rows = build_season_rows()
     ns = write_report(ss, SEASON_TITLE, season_rows)
     print(f"Записано строк: {ns} в лист «{SEASON_TITLE}»")
+
+    return n
 
 
 if __name__ == "__main__":
