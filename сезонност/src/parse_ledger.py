@@ -110,24 +110,33 @@ def parse_ledger(path: pathlib.Path | None = None):
     rows = wb.get_sheet_by_name(wb.sheet_names[0]).to_python()
 
     prikhod_map: dict[int, float] = {}
+    ostatok_map: dict[int, float] = {}        # Σприход − Σрасход по всем движениям = конечный остаток
     sales: dict[tuple[int, str], float] = {}  # (ean, month_label) -> qty net
     cur_ean: int | None = None
+    orphan_rows = 0                            # строки-движения без активного EAN (безартикульные группы)
 
     for r in rows[DATA_START:]:
-        if len(r) <= COL_RAS:
-            continue
-        c0 = str(r[COL_NOM]).strip()
-        ean = normalize_ean(r[COL_NOM])
+        c0 = str(r[COL_NOM]).strip() if len(r) > COL_NOM else ""
+        ean = normalize_ean(r[COL_NOM]) if len(r) > COL_NOM else None
         if ean is not None:
             cur_ean = int(ean)
             prikhod_map.setdefault(cur_ean, 0.0)
+            ostatok_map.setdefault(cur_ean, 0.0)
             continue
-        m = _DATE_RE.match(c0)
-        if not m or cur_ean is None:
+        # ⛔ Любой НЕ-EAN заголовок/пустая строка завершает блок предыдущего EAN.
+        # Иначе движения безартикульной группы (образцы) утекут в предыдущий EAN.
+        if not _DATE_RE.match(c0):
+            cur_ean = None
             continue
-        year, month = int(m.group(3)), int(m.group(2))
+        if cur_ean is None:
+            orphan_rows += 1
+            continue
+        year, month = int(_DATE_RE.match(c0).group(3)), int(_DATE_RE.match(c0).group(2))
         pri, ras = _num(r[COL_PRI]), _num(r[COL_RAS])
         kind = _doc_kind(str(r[COL_DOC]))
+
+        # Остаток = сумма всех физических движений (любой тип): приход − расход.
+        ostatok_map[cur_ean] += pri - ras
 
         if kind == "postuplenie":
             prikhod_map[cur_ean] += pri
@@ -138,7 +147,10 @@ def parse_ledger(path: pathlib.Path | None = None):
             sales[(cur_ean, month_label(year, month))] = (
                 sales.get((cur_ean, month_label(year, month)), 0.0) + (ras - pri)
             )
-        # peremeshchenie / other -> игнор
+        # peremeshchenie / other -> в остаток уже учтены, в приход/продажи не идут
+
+    if orphan_rows:
+        print(f"[parse_ledger] orphan-строк без EAN пропущено: {orphan_rows} (безартикульные группы)")
 
     sales_rows = [
         {"ean": e, "month": mlabel, "qty": q}
@@ -146,7 +158,7 @@ def parse_ledger(path: pathlib.Path | None = None):
         if abs(q) > 1e-9
     ]
     sales_long = pd.DataFrame(sales_rows, columns=["ean", "month", "qty"])
-    return prikhod_map, sales_long
+    return prikhod_map, sales_long, ostatok_map
 
 
 INTERIM = PROJECT_ROOT / "data" / "interim"
@@ -161,7 +173,7 @@ def write_artifacts(path: pathlib.Path | None = None) -> tuple[int, int]:
     profit_rub, margin_pct), но revenue/profit/margin = 0.0 (в леджере денег нет;
     в Sheets-отчёте эти колонки не используются). Возвращает (n_sales_rows, n_eans).
     """
-    prikhod_map, sales_long = parse_ledger(path)
+    prikhod_map, sales_long, ostatok_map = parse_ledger(path)
     INTERIM.mkdir(parents=True, exist_ok=True)
 
     sales = sales_long.copy()
@@ -171,9 +183,11 @@ def write_artifacts(path: pathlib.Path | None = None) -> tuple[int, int]:
     sales = sales[["ean", "month", "qty", "revenue_rub", "profit_rub", "margin_pct"]]
     sales.to_parquet(PRODAZHI_OUT, engine="pyarrow", index=False)
 
+    # приход + остаток (Σприход−Σрасход = конечный остаток) из леджера в один артефакт.
     pri = pd.DataFrame(
-        [{"ean": e, "qty_prikhod": q} for e, q in prikhod_map.items()],
-        columns=["ean", "qty_prikhod"],
+        [{"ean": e, "qty_prikhod": q, "qty_stock": ostatok_map.get(e, 0.0)}
+         for e, q in prikhod_map.items()],
+        columns=["ean", "qty_prikhod", "qty_stock"],
     )
     pri.to_parquet(PRIKHOD_LEDGER_OUT, engine="pyarrow", index=False)
     return len(sales), len(prikhod_map)
@@ -181,7 +195,7 @@ def write_artifacts(path: pathlib.Path | None = None) -> tuple[int, int]:
 
 def main() -> None:
     n_sales, n_eans = write_artifacts()
-    prikhod_map, sales_long = parse_ledger()
+    prikhod_map, sales_long, _ = parse_ledger()
     total_sold = sales_long.groupby("ean")["qty"].sum()
     print(
         f"ledger: {n_eans} EAN | приход сумм={sum(prikhod_map.values()):.0f} | "

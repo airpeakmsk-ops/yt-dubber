@@ -97,22 +97,30 @@ def build_master() -> tuple[pd.DataFrame, dict]:
 
     # --- master frame: приходы spine + left-joined остатки + sales link ---------
     master = _aggregate_prikhody(pri)
-    # qty_prikhod (кол-во приходов) — из ЛЕДЖЕРА «приходы остатки.xlsx»
-    # (Поступление − Возврат поставщику), решение пользователя 2026-06-29. Накладные
-    # остаются ТОЛЬКО источником цен (partii) для себестоимости. Fallback на сумму
-    # накладных, если EAN нет в леджере. n_partii/partii не трогаем (цена/возраст).
+    # qty_prikhod (приход) и qty_stock (остаток) — из ЛЕДЖЕРА «приходы остатки.xlsx»
+    # (приход = Поступление − Возврат поставщику; остаток = Σприход−Σрасход = конечный
+    # остаток леджера), решение пользователя 2026-06-29. Накладные — ТОЛЬКО источник цен
+    # (partii); файл остатков как fallback. Леджер консистентен: остаток сходится с
+    # приход−продано (файл остатков давал расхождения, напр. −1 vs реальные 4).
+    led_prikhod: dict = {}
+    led_stock: dict = {}
     if PRIKHOD_LEDGER_PATH.exists():
-        led = pd.read_parquet(PRIKHOD_LEDGER_PATH).set_index("ean")["qty_prikhod"].to_dict()
+        _led = pd.read_parquet(PRIKHOD_LEDGER_PATH).set_index("ean")
+        led_prikhod = _led["qty_prikhod"].to_dict()
+        if "qty_stock" in _led.columns:
+            led_stock = _led["qty_stock"].to_dict()
         master["qty_prikhod"] = [
-            float(led.get(int(e), nak)) for e, nak in zip(master["ean"], master["qty_prikhod"])
+            float(led_prikhod.get(int(e), nak)) for e, nak in zip(master["ean"], master["qty_prikhod"])
         ]
 
-    # Left-join free stock. EAN без строки остатка = распродан -> остаток 0 (НЕ NaN),
-    # иначе колонка F пустая, DSI не считается и распроданный товар выпадает из дозаказа
-    # (фикс 2026-06-29, user). Отрицательный остаток (резерв>остатка) сохраняем как есть.
-    stock = ost[["ean", "qty_stock"]].drop_duplicates("ean")
-    master = master.merge(stock, on="ean", how="left")
-    master["qty_stock"] = master["qty_stock"].fillna(0.0)
+    # Остаток: леджер -> fallback файл остатков -> 0 (распродан = 0, НЕ NaN, иначе DSI не
+    # считается и распроданный товар выпадает из дозаказа).
+    ost_file = ost[["ean", "qty_stock"]].drop_duplicates("ean").set_index("ean")["qty_stock"].to_dict()
+    master["qty_stock"] = [
+        float(led_stock[int(e)]) if int(e) in led_stock
+        else float(ost_file.get(int(e), 0.0))
+        for e in master["ean"]
+    ]
 
     # Sales link: a boolean flag + total units sold; monthly detail stays in
     # prodazhi.parquet (master keeps the link, not all 33 monthly columns).
