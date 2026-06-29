@@ -90,12 +90,14 @@ def _doc_kind(doc: str) -> str:
     if d.startswith("Корректировка поступления"):
         return "postuplenie"        # корректировка прихода -> в приход
     if d.startswith("Перемещение"):
-        return "peremeshchenie"     # внутренний перенос -> игнор
-    return "other"                  # «Объект не найден» и пр. -> игнор
+        return "peremeshchenie"     # внутренний перенос -> игнор (в продажи не идёт)
+    return "other"                  # «Объект не найден» и пр. -> считаем как продажу (user 2026-06-29)
 
 
 # Типы документов, влияющие на ПРОДАЖИ (вклад = расход − приход за месяц).
-_SALE_KINDS = {"realizaciya", "vozvrat_pokupatel", "komplektaciya", "oprihodovanie"}
+# «other» = «Объект не найден» и прочие нераспознанные: расход = продажа, приход = −продажа
+# (решение пользователя 2026-06-29). Перемещение в продажи НЕ входит.
+_SALE_KINDS = {"realizaciya", "vozvrat_pokupatel", "komplektaciya", "oprihodovanie", "other"}
 
 
 def parse_ledger(path: pathlib.Path | None = None):
