@@ -93,13 +93,21 @@ def pct_sales(qty_sold_total, qty_prikhod) -> float | str:
 # Priority gate: распродажа последней партии
 # ---------------------------------------------------------------------------
 
-def sell_through_last_batch(last_qty, sold_after) -> float | str:
-    """Доля распродажи последней партии: sold_after / last_qty (user 2026-06-29).
+def sell_through_last_batch(last_qty, qty_stock) -> float | str:
+    """Доля распродажи последней партии по истощению остатка (user 2026-06-29).
 
-    last_qty:    кол-во последнего прихода (самая свежая партия по дате накладной).
-    sold_after:  продано штук ПОСЛЕ месяца последнего прихода (строго позже).
+    = (last_qty − текущий_остаток) / last_qty, клампится в [0, 1].
 
-    Returns float >= 0 if last_qty > 0, else "" (нет данных о последней закупке).
+    Смысл: сколько последней закупки уже ушло со склада. Распроданный товар
+    (остаток 0) -> 1.0 (распродан полностью -> в приоритете дозаказа). Большая
+    недавняя закупка с высоким остатком -> низкая доля -> демотируется.
+    Отрицательный/NaN остаток -> 0 (нет доступного остатка -> распродан -> 1.0).
+    Остаток больше партии (накоплен из прежних партий) -> кламп в 0 (не распродан).
+
+    last_qty:   кол-во последней партии (самая свежая по дате накладной).
+    qty_stock:  текущий суммарный остаток.
+
+    Returns float in [0,1] if last_qty > 0, else "" (нет данных о последней закупке).
     """
     if last_qty is None:
         return ""
@@ -110,12 +118,13 @@ def sell_through_last_batch(last_qty, sold_after) -> float | str:
     if pd.isna(lq) or lq <= 0:
         return ""
     try:
-        sa = float(sold_after)
+        stock = float(qty_stock)
     except (TypeError, ValueError):
-        sa = 0.0
-    if pd.isna(sa):
-        sa = 0.0
-    return sa / lq
+        stock = 0.0
+    if pd.isna(stock) or stock < 0:
+        stock = 0.0
+    ratio = (lq - stock) / lq
+    return max(0.0, min(1.0, ratio))
 
 
 def is_priority_eligible(sell_through) -> bool:
@@ -347,9 +356,8 @@ def enrich_df(
         recent_df = prodazhi_df[prodazhi_df["_sk"] >= DEAD_CUTOFF]
         recent_sales_map = recent_df.groupby("ean")["qty"].sum().to_dict()
 
-    # --- last-batch sell-through maps (priority gate, user 2026-06-29) ------------
-    # last_month_map[ean] = (year, month) последней партии; last_qty_map[ean] = её qty.
-    last_month_map: dict = {}
+    # --- last-batch qty (priority gate by stock depletion, user 2026-06-29) -------
+    # last_qty_map[ean] = qty последней партии (самая свежая по дате накладной).
     last_qty_map: dict = {}
     if "partii" in master_df.columns and "ean" in master_df.columns:
         for ean_v, partii in zip(master_df["ean"], master_df["partii"]):
@@ -358,27 +366,10 @@ def enrich_df(
             except (ValueError, TypeError, KeyError):
                 continue
             lm = (last_dt.year, last_dt.month)
-            lq = sum(
+            last_qty_map[ean_v] = sum(
                 p["qty"] for p in partii
                 if (p["invoice_date"].year, p["invoice_date"].month) == lm
             )
-            last_month_map[ean_v] = lm
-            last_qty_map[ean_v] = lq
-
-    # sold_after_map[ean] = продано штук СТРОГО ПОСЛЕ месяца последней партии.
-    sold_after_map: dict = {}
-    pro_sk = prodazhi_df
-    if "sort_key" not in pro_sk.columns and "month" in pro_sk.columns:
-        from src.report_metrics import month_sort_key as _msk2
-        pro_sk = pro_sk.copy()
-        pro_sk["sort_key"] = pro_sk["month"].map(_msk2)
-    if "sort_key" in pro_sk.columns and last_month_map:
-        sub = pro_sk[["ean", "sort_key", "qty"]].copy()
-        sub["_lm"] = sub["ean"].map(last_month_map)
-        sub = sub[sub["_lm"].notna()]
-        mask = [sk > lm for sk, lm in zip(sub["sort_key"], sub["_lm"])]
-        sub = sub[pd.Series(mask, index=sub.index)]
-        sold_after_map = sub.groupby("ean")["qty"].sum().to_dict()
 
     # EAN column — first column of df
     ean_col = df.columns[0]  # «EAN» or similar
@@ -417,14 +408,19 @@ def enrich_df(
         dead = is_dead(stock, recent)
         rows_dead.append("Мёртвый" if dead else "")
 
-        # Залежалый (col R) — mutually exclusive with Мёртвый
+        # Залежалый (col R) — mutually exclusive with Мёртвый; только при положительном остатке
+        # (распроданный товар с остатком 0 — не залежалый, даже если возраст > 180 дней).
         dsi_val = row.get("DSI, дней", "")
         age = row.get("Возраст остатка, дней", 0) or 0
-        stale = (not dead) and is_stale(dsi_val, age, recent)
+        try:
+            stock_pos = float(stock) > 0
+        except (TypeError, ValueError):
+            stock_pos = False
+        stale = (not dead) and stock_pos and is_stale(dsi_val, age, recent)
         rows_stale.append("Залежалый" if stale else "")
 
-        # Распродажа посл. партии, % (col S) — priority gate (user 2026-06-29)
-        st = sell_through_last_batch(last_qty_map.get(ean), sold_after_map.get(ean, 0))
+        # Распродажа посл. партии, % (col S) — priority gate by stock depletion (user 2026-06-29)
+        st = sell_through_last_batch(last_qty_map.get(ean), qty_stock_map.get(ean))
         rows_sellthru.append(round(st, 3) if st != "" else "")
 
     df = df.copy()

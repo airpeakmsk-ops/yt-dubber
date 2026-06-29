@@ -27,8 +27,9 @@ N_MONTHS = 33
 FIRST_MONTH = "Октябрь 2023 г."
 LAST_MONTH = "Июнь 2026 г."
 SAMPLE_EAN = 9999999999999  # samples must NOT appear
-NAN_STOCK_EAN = 4525807273205     # has_sales, qty_stock is NaN -> DSI ""
-NEG_STOCK_EAN = 4525807289329     # qty_stock < 0 -> DSI ""
+# Распродан: нет строки остатка -> остаток 0 (fillna), есть продажи -> DSI 0 (горящий).
+SOLDOUT_EAN = 4525807273205       # has_sales, нет в остатках -> остаток 0 -> DSI 0
+NEG_STOCK_EAN = 4525807289329     # qty_stock < 0 (резерв>остатка), есть продажи -> DSI 0
 
 
 @pytest.fixture
@@ -97,12 +98,13 @@ def test_velocity_and_dsi(report_df, master_cost, oracle_eans, weekly_months_map
         assert row["DSI, дней"] == pytest.approx(expected_dsi), (
             f"EAN {ean}: DSI mismatch (months_in_stock={m})"
         )
-    # NaN stock -> DSI ""
-    nan_row = report_df[report_df["EAN"] == NAN_STOCK_EAN].iloc[0]
-    assert nan_row["DSI, дней"] == ""
-    # negative stock -> DSI ""
+    # Распродан (нет в остатках -> остаток 0), есть продажи -> Остаток 0, DSI 0 (горящий).
+    soldout_row = report_df[report_df["EAN"] == SOLDOUT_EAN].iloc[0]
+    assert soldout_row["Остаток"] == 0, "распроданный товар -> остаток 0, не пусто"
+    assert soldout_row["DSI, дней"] == 0, "распроданный товар с продажами -> DSI 0"
+    # Отрицательный остаток (резерв>остатка) + продажи -> DSI 0 (нет доступного запаса).
     neg_row = report_df[report_df["EAN"] == NEG_STOCK_EAN].iloc[0]
-    assert neg_row["DSI, дней"] == ""
+    assert neg_row["DSI, дней"] == 0
 
 
 # --- REPORT-05 ---------------------------------------------------------------

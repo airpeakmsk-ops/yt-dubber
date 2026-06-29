@@ -64,11 +64,19 @@ def sht_per_month(qty_sold_total: float, n_months: int = N_MONTHS_DEFAULT) -> fl
 def dsi_days(qty_stock, velocity_per_month: float):
     """Days Sales of Inventory: qty_stock / (velocity_per_month / 30).
 
-    Guard (locked): if qty_stock is NaN/≤0 OR velocity_per_month ≤0 -> "" (empty string,
-    never NaN/inf). Negative qty_stock = «нет покрытия» -> "". Otherwise round to 1 dp.
+    Логика (обновлено 2026-06-29, user):
+      - velocity ≤ 0 (товар не продаётся) -> "" (DSI не определён, в дозаказ не попадает).
+      - velocity > 0 И остаток ≤ 0 / NaN (распродан, нет доступного остатка)
+        -> 0.0 (ноль дней запаса = САМЫЙ горящий, должен попадать в приоритет дозаказа).
+      - иначе округлить до 1 знака.
+
+    Раньше распроданный товар (остаток 0/NaN) давал "" и выпадал из приоритета —
+    это была ошибка: распроданный ходовой товар = первый кандидат на дозаказ.
     """
-    if pd.isna(qty_stock) or qty_stock <= 0 or velocity_per_month <= 0:
+    if velocity_per_month <= 0:
         return ""
+    if pd.isna(qty_stock) or qty_stock <= 0:
+        return 0.0
     return round(qty_stock / (velocity_per_month / 30), 1)
 
 

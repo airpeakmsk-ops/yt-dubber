@@ -97,9 +97,12 @@ def build_master() -> tuple[pd.DataFrame, dict]:
     # --- master frame: приходы spine + left-joined остатки + sales link ---------
     master = _aggregate_prikhody(pri)
 
-    # Left-join free stock (qty_stock NaN where an EAN has no остаток row).
+    # Left-join free stock. EAN без строки остатка = распродан -> остаток 0 (НЕ NaN),
+    # иначе колонка F пустая, DSI не считается и распроданный товар выпадает из дозаказа
+    # (фикс 2026-06-29, user). Отрицательный остаток (резерв>остатка) сохраняем как есть.
     stock = ost[["ean", "qty_stock"]].drop_duplicates("ean")
     master = master.merge(stock, on="ean", how="left")
+    master["qty_stock"] = master["qty_stock"].fillna(0.0)
 
     # Sales link: a boolean flag + total units sold; monthly detail stays in
     # prodazhi.parquet (master keeps the link, not all 33 monthly columns).

@@ -269,12 +269,14 @@ def test_presort_secondary_dsi_asc():
 
 @_skip_order
 def test_sell_through_last_batch():
-    """Доля = продано после посл. закупки / qty последней партии."""
-    assert sell_through_last_batch(100, 70) == pytest.approx(0.70)
-    assert sell_through_last_batch(200, 50) == pytest.approx(0.25)
-    assert sell_through_last_batch(0, 5) == ""      # нет данных о последней закупке
+    """Доля распродажи = (last_qty − остаток) / last_qty, кламп [0,1]."""
+    assert sell_through_last_batch(100, 70) == pytest.approx(0.30)   # 30 из 100 ушло
+    assert sell_through_last_batch(200, 50) == pytest.approx(0.75)   # 150 из 200 ушло
+    assert sell_through_last_batch(100, 0) == pytest.approx(1.0)     # распродан -> 1.0
+    assert sell_through_last_batch(100, -1) == pytest.approx(1.0)    # отриц. остаток -> 0 -> 1.0
+    assert sell_through_last_batch(100, 150) == pytest.approx(0.0)   # остаток > партии -> кламп 0
+    assert sell_through_last_batch(0, 5) == ""                       # нет данных о последней закупке
     assert sell_through_last_batch(None, 5) == ""
-    assert sell_through_last_batch(100, 0) == pytest.approx(0.0)
 
 
 @_skip_order
