@@ -25,11 +25,35 @@ from src.sheets_client import get_client, write_report   # noqa: E402
 from src.apply_formatting import format_sheet             # noqa: E402
 from src.seasonality import compute_global_seasonal_index # noqa: E402
 from src.report_metrics import RU_MONTHS                  # noqa: E402
+from src.order_finalize import (                          # noqa: E402
+    apply_report_order_adjustment,
+    build_coverage_block,
+    build_order_rows,
+    parse_already_ordered,
+    parse_dealer_wants,
+    parse_exclude,
+    parse_factory_avail,
+)
 
 # LOCKED targets (зафиксировано пользователем / research'ем).
 SHEET_ID = "1ncF3ElaK8OWRfnajrdkiK9WcNQQ9r0UTKhx_xSaBtSE"
 WORKSHEET_TITLE = "Отчёт"
 SEASON_TITLE = "Сезонность"
+ORDER_TITLE = "ближайший заказ"
+
+# Листы-входы, которые ведёт пользователь (мы их только читаем).
+EXCLUDE_TITLE = "исключить"
+ALREADY_TITLE = "уже заказано"
+DEALER_TITLE = "надо дилерам, еще не заказано"
+FACTORY_TITLE = "доступный остаток завода"
+
+
+def _safe_values(ss, title: str) -> list[list]:
+    """Прочитать все значения листа; [] если листа нет (вход не обязателен)."""
+    try:
+        return ss.worksheet(title).get_all_values()
+    except Exception:  # WorksheetNotFound и пр.
+        return []
 
 # Ordered RU month names (Jan=1..Dec=12) for «Сезонность» sheet.
 _MONTH_NAMES_BY_NUM: dict[int, str] = {v: k for k, v in RU_MONTHS.items()}
@@ -96,21 +120,45 @@ def main() -> None:
     Касается сети — запускать вручную после human-verify gate.
     НЕ вызывается автоматически ни в pytest, ни при импорте модуля.
     """
-    rows, df = build_rows()
+    df = build_report_df()  # ИСХОДНЫЙ df (прогноз К заказу до корректировок)
 
     client = get_client()
     ss = client.open_by_key(SHEET_ID)
 
-    # 1. Write main report
+    # 0. Прочитать листы-входы пользователя (только чтение).
+    excluded = parse_exclude(_safe_values(ss, EXCLUDE_TITLE))
+    already = parse_already_ordered(_safe_values(ss, ALREADY_TITLE))
+    dealer_vals = _safe_values(ss, DEALER_TITLE)
+    wants = parse_dealer_wants(dealer_vals)
+    factory = parse_factory_avail(_safe_values(ss, FACTORY_TITLE))
+    print(f"Входы: исключить={len(excluded)} уже заказано={len(already)} "
+          f"хотелки={len(wants)} лимит завода={len(factory)}")
+
+    # 1. «Ближайший заказ» — из ИСХОДНОГО прогноза (до вычета «уже заказано»).
+    order_rows = build_order_rows(df, excluded, already, wants)
+
+    # 2. Отчёт: скорректировать «К заказу» (исключить -> 0; − уже заказано).
+    df_report = apply_report_order_adjustment(df, excluded, already)
+    rows = df_to_rows(df_report)
     n = write_report(ss, WORKSHEET_TITLE, rows)
     print(f"Записано строк: {n} в лист «{WORKSHEET_TITLE}»")
 
-    # 2. Apply colour formatting (one batch_format API call)
+    # 3. Цветовая заливка (один ws.batch_format()).
     ws = ss.worksheet(WORKSHEET_TITLE)
-    format_sheet(ws, df)
-    print(f"Цветовая заливка применена (DSI / %продаж / зелёный товар)")
+    format_sheet(ws, df_report)
+    print("Цветовая заливка применена (DSI / %продаж / зелёный товар)")
 
-    # 3. Write «Сезонность» sheet (12 global seasonal indices)
+    # 4. «Ближайший заказ» (артикул, себест, кол-во, сумма, ИТОГО).
+    no = write_report(ss, ORDER_TITLE, order_rows)
+    print(f"Записано строк: {no} в лист «{ORDER_TITLE}» (включая ИТОГО)")
+
+    # 5. Блок покрытия хотелок лимитом завода -> дописать в «надо дилерам» (колонки F:H).
+    if dealer_vals:
+        block = build_coverage_block(dealer_vals, factory)
+        ss.worksheet(DEALER_TITLE).update(values=block, range_name="F1")
+        print(f"Колонки покрытия (доступно/покроется/не закроется) -> «{DEALER_TITLE}»")
+
+    # 6. «Сезонность» (12 глобальных индексов).
     season_rows = build_season_rows()
     ns = write_report(ss, SEASON_TITLE, season_rows)
     print(f"Записано строк: {ns} в лист «{SEASON_TITLE}»")
