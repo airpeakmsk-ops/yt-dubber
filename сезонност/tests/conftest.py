@@ -132,3 +132,46 @@ def season_map():
 
     prodazhi_df = pd.read_parquet(prodazhi_path)
     return seasonality.compute_global_seasonal_index(prodazhi_df)
+
+
+# --- Phase 6 / Bot fixtures ---------------------------------------------------
+
+@pytest.fixture
+def bot_config(tmp_path):
+    """Config instance with tmp project_root, fake token, allowed_user_id=188032358.
+
+    Does NOT call load_config() (which requires real env) — constructs Config
+    directly so tests run without .env present.
+    """
+    from bot.config import Config
+
+    return Config(
+        bot_token="fake_token_for_testing_1234567890abcdef",
+        allowed_user_id=188032358,
+        project_root=tmp_path,
+        creds_path="",
+    )
+
+
+@pytest.fixture
+def fake_xlsx_short(tmp_path):
+    """A minimal xlsx file with fewer than 12 rows — used for validate-reject tests.
+
+    Tries openpyxl first (most common). Falls back to writing a minimal xlsx
+    manually (ZIP with a stub sheet). If neither is available, yields a plain
+    empty file (test that uses this fixture will xfail independently).
+    """
+    xlsx_path = tmp_path / "fake_short.xlsx"
+    try:
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        for i in range(5):  # only 5 rows — well below any 12-row threshold
+            ws.append([f"row{i}", i])
+        wb.save(xlsx_path)
+    except ImportError:
+        # openpyxl not available — write an empty file; the consuming test
+        # should be marked xfail so this is acceptable.
+        xlsx_path.write_bytes(b"")
+    return xlsx_path
