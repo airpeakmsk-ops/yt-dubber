@@ -1,0 +1,15 @@
+[Unit]
+Description=Skladetbot — Telegram-бот обновления складской аналитики TIMON (приём xlsx → пересчёт → Google Sheets)
+After=network.target
+
+[Service]
+WorkingDirectory=/root/skladetbot
+EnvironmentFile=/root/skladetbot/.env
+ExecStart=/root/skladetbot/venv/bin/python3 -m bot.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
