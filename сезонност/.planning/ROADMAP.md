@@ -101,7 +101,7 @@
   - [x] 06-01-PLAN.md — Wave 0 scaffold + контракт main()->int (sweep) + config/keyboards (completed 2026-06-30)
   - [x] 06-02-PLAN.md — backup/restore/validate (бэкап+откат+валидация, fail-closed) (completed 2026-06-30)
   - [x] 06-03-PLAN.md — pipeline orchestrator (карта тип→шаги: ledger/weekly/invoice) (completed 2026-06-30)
-  - [ ] 06-04-PLAN.md — handlers + scheduler + main (BOT-01 приём, BOT-04 пинг, whitelist)
+  - [x] 06-04-PLAN.md — handlers + scheduler + main (BOT-01 приём, BOT-04 пинг, whitelist) (completed 2026-06-30)
   - [ ] 06-05-PLAN.md — деплой на VPS (systemd, secrets, live e2e — checkpoints)
 
 ---
@@ -115,7 +115,7 @@
 | 3. Основной отчёт в Google Sheets | 2/2 | Complete   | 2026-06-27 |
 | 4. Ранжирование, сезонность и план дозаказа | 4/4 +расш. | Complete | 2026-06-29 |
 | 5. Дашборды | 0/? | Not started | - |
-| 6. Telegram-бот обновления | 3/5 | In progress | - |
+| 6. Telegram-бот обновления | 4/5 | In progress | - |
 
 ---
 
