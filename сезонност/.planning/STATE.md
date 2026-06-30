@@ -33,19 +33,19 @@ progress:
 ## Current Position
 
 **Milestone:** 1
-**Current Phase:** 4
-**Current Plan:** Not started
-**Status:** Ready to plan
+**Current Phase:** 6
+**Current Plan:** 06-01 complete → 06-02 next
+**Status:** In progress
 
 ```
 [██████████] Phase 1: Парсинг и сопоставление ✓
 [██████████] Phase 2: Себестоимость USD ✓
 [██████████] Phase 3: Основной отчёт в Google Sheets ✓ (03-01 ✓, 03-02 ✓ — лист «Отчёт» заполнен)
-[██████████] Phase 4: Ранжирование, сезонность и план дозаказа (04-01 ✓, 04-02 ✓, 04-03 ✓, 04-04 ✓ офлайн / CHECKPOINT live-write)
+[██████████] Phase 4: Ранжирование, сезонность и план дозаказа ✓ (04-01 ✓, 04-02 ✓, 04-03 ✓, 04-04 ✓)
 [          ] Phase 5: Дашборды
-[          ] Phase 6: Telegram-бот обновления
+[██        ] Phase 6: Telegram-бот обновления (06-01 ✓, 06-02..05 pending)
 
-Progress: [███████░░░] 67% (3/6 phases done, Phase 4 at 4/4 plans; live-write checkpoint pending)
+Progress: [████████░░] 75% (4/6 phases done, Phase 6 at 1/5 plans)
 ```
 
 ---
@@ -172,12 +172,13 @@ None.
 
 | 2026-06-27 | 9 | Executed plan 04-03 (order_plan pure compute). src/order_plan.py создан: pct_sales, compute_order_qty (ORDER-01/02, порог 60%, neg-stock=0), is_dead, is_stale (SEASON-02, 12 мес Jul2025..Jun2026), presort_by_dsi (VISUAL-03, red-first secondary DSI asc), enrich_df (6 колонок M-R). Pitfall 5 guard: build_report НЕ импортируется. Oracle EAN 4525807270297: К заказу = 4.4 шт (verified). 8 новых тестов; полная сьюта 44 passed (было 30), 0 регрессий. Commit 5acd0b2. ORDER-01/02, SEASON-02, VISUAL-03 done. Stopped at: Completed 04-03-PLAN.md. |
 | 2026-06-27 | 10 | Executed plan 04-04 (integration). build_report_df расширен до 84 колонок: availability-velocity (months_in_stock per EAN из weekly файла), enrich_df M-R, presort_by_dsi. Oracle DSI=18.6/К заказу=4.4 подтверждены. apply_formatting.py создан: build_format_requests + format_sheet (один ws.batch_format). report_to_sheets.py расширен: build_rows()->(rows,df), build_season_rows() (12 индексов, plain float), main() пишет «Отчёт»+заливку+«Сезонность». Оба xfail сняты. 52 тестов GREEN. ROADMAP крит#4=12 мес, крит#3 known-deviation note добавлена. Commits c1294cd/38573d8/2475c0d/7f91a30. Stopped at: CHECKPOINT human-verify Task 4 (live Sheets write pending). |
+| 2026-06-30 | 11 | Executed plan 06-01 (Phase 6 foundation). Task 1: report_to_sheets.main()->int (return n, sweep 0 callers, 843ca9c). Task 2: bot/ package — config.py (Config dataclass, load_config, env-secrets, allowed_user_id=188032358), keyboards.py (file_type_keyboard 3 ftype: buttons), __init__.py (d659806). Task 3: Wave 0 pytest scaffold — tests/test_bot_handlers.py + test_bot_pipeline.py + test_bot_backup.py + test_bot_scheduler.py (9 xfail stubs BOT-01..04); conftest.py + bot_config + fake_xlsx_short fixtures (dc0863c). Full suite: 66 passed, 9 xfailed, 0 collection errors. BOT-01/02/03/04 scaffolded. Stopped at: Completed 06-01-PLAN.md. |
 
 ---
 
 ## Next Action
 
-Phase 4 Plan 04 OFFLINE COMPLETE — все автоматизируемые части выполнены (84 колонки, apply_formatting, лист «Сезонность», 52 теста GREEN). Ожидается human-verify: запустить `python src/report_to_sheets.py` и визуально подтвердить заливку/сортировку/«Сезонность» в Google Sheet. После подтверждения — Phase 4 COMPLETE, переход к Phase 5.
+Phase 6 Plan 01 COMPLETE. Следующий шаг: выполнить 06-02-PLAN.md (backup/restore/validate — бэкап+откат+валидация входящих файлов, fail-closed логика). Стабы test_bot_backup.py уже в месте, fixture bot_config готова.
 
 ---
 *STATE created: 2026-06-26*
