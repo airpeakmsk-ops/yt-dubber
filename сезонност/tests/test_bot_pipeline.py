@@ -1,60 +1,345 @@
-"""test_bot_pipeline.py — Wave 0 stubs for BOT-02/03 (Plan 03).
+"""test_bot_pipeline.py — GREEN-тесты для bot/pipeline.py (Plan 03, BOT-02/03).
 
-Tests cover the pipeline orchestration layer — which steps run for each file type:
-  - Леджер  → parse_ledger → build_master → compute_cost → report_to_sheets
-  - Недельные остатки → только report_to_sheets (скорость по наличию)
-  - Накладная → build_master → compute_cost → report_to_sheets
-
-All tests are xfail until Plan 03 implements bot/pipeline.py with the step map
-and subprocess/import orchestration.
+Мок src-функций через monkeypatch — проверяем ПОРЯДОК и НАБОР вызовов, не реальный пересчёт.
+Реальные файлы не затрагиваются: shutil.copy2 тоже замокан.
 """
+from __future__ import annotations
+
+import pathlib
+import sys
+from unittest.mock import MagicMock, call, patch
+
 import pytest
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason="impl in Plan 03: ledger → parse_ledger→build_master→compute_cost→report",
-    strict=False,
-)
-def test_ledger_steps(bot_config, tmp_path):
-    """Леджер pipeline: все 4 шага вызываются в правильном порядке.
+FAKE_N = 42  # stub return value from report.main()
 
-    Plan 03 will:
-      - Mock parse_ledger.main, build_master.main, compute_cost.main,
-        report_to_sheets.main (return 1300).
-      - Call bot.pipeline.run_pipeline(ftype='ledger', file_path=..., config=...).
-      - Assert all 4 mocks called exactly once, in order.
-      - Assert return value is 1300 (N строк «Отчёт»).
+
+def _make_tmp_xlsx(tmp_path: pathlib.Path, name: str = "test_file.xlsx") -> pathlib.Path:
+    """Создать фиктивный .xlsx файл в tmp_path (не пустой — validate_xlsx должен пройти)."""
+    p = tmp_path / name
+    # Minimal xlsx magic bytes so validate_xlsx doesn't reject it
+    # (bot.backup.validate_xlsx проверяет что файл существует и не пустой)
+    p.write_bytes(b"PK\x03\x04" + b"\x00" * 100)
+    return p
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def tmp_xlsx(tmp_path):
+    return _make_tmp_xlsx(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Test 1: ledger steps
+# ---------------------------------------------------------------------------
+
+def test_ledger_steps(tmp_path, tmp_xlsx, monkeypatch):
+    """run_pipeline('ledger', tmp) вызывает write_artifacts→build_master.main→
+    compute_cost.main→report.main ровно по разу, в этом порядке.
+    tmp скопирован в 'приходы остатки.xlsx'. Возвращает N от report.
     """
-    pytest.xfail("not implemented until Plan 03")
+    import bot.pipeline as pipeline
+
+    calls = []
+
+    def fake_validate(path, ftype):
+        calls.append(("validate", ftype))
+
+    def fake_backup(ftype):
+        calls.append(("backup", ftype))
+        return pathlib.Path(tmp_path / "bak")
+
+    def fake_restore(bak):
+        calls.append(("restore",))
+
+    def fake_copy2(src, dst):
+        calls.append(("copy2", str(src), str(dst)))
+
+    def fake_write_artifacts(path=None):
+        calls.append(("write_artifacts", str(path)))
+        return (100, 50)
+
+    def fake_build_master():
+        calls.append(("build_master",))
+
+    def fake_compute_cost():
+        calls.append(("compute_cost",))
+
+    def fake_report():
+        calls.append(("report",))
+        return FAKE_N
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", fake_validate)
+    monkeypatch.setattr(pipeline, "backup_artifacts", fake_backup)
+    monkeypatch.setattr(pipeline, "restore_artifacts", fake_restore)
+    monkeypatch.setattr(pipeline.shutil, "copy2", fake_copy2)
+    monkeypatch.setattr(pipeline, "_write_artifacts", fake_write_artifacts)
+    monkeypatch.setattr(pipeline, "_build_master", fake_build_master)
+    monkeypatch.setattr(pipeline, "_compute_cost", fake_compute_cost)
+    monkeypatch.setattr(pipeline, "_report_main", fake_report)
+
+    result = pipeline.run_pipeline("ledger", tmp_xlsx)
+
+    assert result == FAKE_N
+
+    # Порядок шагов (после validate/backup):
+    step_calls = [c[0] for c in calls]
+    assert "write_artifacts" in step_calls
+    assert "build_master" in step_calls
+    assert "compute_cost" in step_calls
+    assert "report" in step_calls
+
+    # write_artifacts РАНЬШЕ build_master, build_master РАНЬШЕ compute_cost, compute_cost РАНЬШЕ report
+    idx = {name: step_calls.index(name) for name in ("write_artifacts", "build_master", "compute_cost", "report")}
+    assert idx["write_artifacts"] < idx["build_master"] < idx["compute_cost"] < idx["report"]
+
+    # Файл скопирован в 'приходы остатки.xlsx'
+    copy_calls = [c for c in calls if c[0] == "copy2"]
+    assert len(copy_calls) == 1
+    assert "приходы остатки.xlsx" in copy_calls[0][2]
+
+    # restore НЕ вызван (успех)
+    assert "restore" not in step_calls
 
 
-@pytest.mark.xfail(
-    reason="impl in Plan 03: weekly → только report",
-    strict=False,
-)
-def test_weekly_steps(bot_config, tmp_path):
-    """Недельные остатки pipeline: только report_to_sheets (пересборка отчёта).
+# ---------------------------------------------------------------------------
+# Test 2: weekly steps
+# ---------------------------------------------------------------------------
 
-    Plan 03 will:
-      - Mock report_to_sheets.main only.
-      - Call bot.pipeline.run_pipeline(ftype='weekly', ...).
-      - Assert parse_ledger / build_master / compute_cost NOT called.
-      - Assert report_to_sheets.main called once, return value forwarded.
+def test_weekly_steps(tmp_path, tmp_xlsx, monkeypatch):
+    """run_pipeline('weekly', tmp) вызывает ТОЛЬКО report.main.
+    build_master/compute_cost/write_artifacts НЕ вызваны (BOT-02).
+    tmp скопирован в 'остатки по неделям.xlsx'.
     """
-    pytest.xfail("not implemented until Plan 03")
+    import bot.pipeline as pipeline
+
+    calls = []
+
+    def fake_validate(path, ftype):
+        calls.append(("validate", ftype))
+
+    def fake_backup(ftype):
+        calls.append(("backup", ftype))
+        return pathlib.Path(tmp_path / "bak")
+
+    def fake_restore(bak):
+        calls.append(("restore",))
+
+    def fake_copy2(src, dst):
+        calls.append(("copy2", str(src), str(dst)))
+
+    def fake_write_artifacts(path=None):
+        calls.append(("write_artifacts",))
+        return (0, 0)
+
+    def fake_build_master():
+        calls.append(("build_master",))
+
+    def fake_compute_cost():
+        calls.append(("compute_cost",))
+
+    def fake_report():
+        calls.append(("report",))
+        return FAKE_N
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", fake_validate)
+    monkeypatch.setattr(pipeline, "backup_artifacts", fake_backup)
+    monkeypatch.setattr(pipeline, "restore_artifacts", fake_restore)
+    monkeypatch.setattr(pipeline.shutil, "copy2", fake_copy2)
+    monkeypatch.setattr(pipeline, "_write_artifacts", fake_write_artifacts)
+    monkeypatch.setattr(pipeline, "_build_master", fake_build_master)
+    monkeypatch.setattr(pipeline, "_compute_cost", fake_compute_cost)
+    monkeypatch.setattr(pipeline, "_report_main", fake_report)
+
+    result = pipeline.run_pipeline("weekly", tmp_xlsx)
+
+    assert result == FAKE_N
+
+    step_calls = [c[0] for c in calls]
+
+    # Только report — никакого rebuild parquet
+    assert "write_artifacts" not in step_calls, "weekly НЕ должен вызывать write_artifacts"
+    assert "build_master" not in step_calls, "weekly НЕ должен вызывать build_master"
+    assert "compute_cost" not in step_calls, "weekly НЕ должен вызывать compute_cost"
+    assert "report" in step_calls
+
+    # Файл скопирован в 'остатки по неделям.xlsx'
+    copy_calls = [c for c in calls if c[0] == "copy2"]
+    assert len(copy_calls) == 1
+    assert "остатки по неделям.xlsx" in copy_calls[0][2]
+
+    # restore НЕ вызван
+    assert "restore" not in step_calls
 
 
-@pytest.mark.xfail(
-    reason="impl in Plan 03: invoice → build_master→compute_cost→report",
-    strict=False,
-)
-def test_invoice_steps(bot_config, tmp_path):
-    """Накладная pipeline: build_master → compute_cost → report_to_sheets.
+# ---------------------------------------------------------------------------
+# Test 3: invoice steps
+# ---------------------------------------------------------------------------
 
-    Plan 03 will:
-      - Mock build_master.main, compute_cost.main, report_to_sheets.main.
-      - Call bot.pipeline.run_pipeline(ftype='invoice', ...).
-      - Assert parse_ledger NOT called (накладная не меняет леджер).
-      - Assert build_master → compute_cost → report called in order.
+def test_invoice_steps(tmp_path, monkeypatch):
+    """run_pipeline('invoice', tmp) вызывает build_master.main→compute_cost.main→report.main.
+    write_artifacts (ledger-парсер) НЕ вызван. tmp скопирован в поступления товаров/.
     """
-    pytest.xfail("not implemented until Plan 03")
+    import bot.pipeline as pipeline
+
+    # Файл без маркера курса → копируется в в рублях/
+    tmp_xlsx = tmp_path / "12 поступление.xlsx"
+    tmp_xlsx.write_bytes(b"PK\x03\x04" + b"\x00" * 100)
+
+    calls = []
+
+    def fake_validate(path, ftype):
+        calls.append(("validate", ftype))
+
+    def fake_backup(ftype):
+        calls.append(("backup", ftype))
+        return pathlib.Path(tmp_path / "bak")
+
+    def fake_restore(bak):
+        calls.append(("restore",))
+
+    def fake_copy2(src, dst):
+        calls.append(("copy2", str(src), str(dst)))
+
+    def fake_write_artifacts(path=None):
+        calls.append(("write_artifacts",))
+        return (0, 0)
+
+    def fake_build_master():
+        calls.append(("build_master",))
+
+    def fake_compute_cost():
+        calls.append(("compute_cost",))
+
+    def fake_report():
+        calls.append(("report",))
+        return FAKE_N
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", fake_validate)
+    monkeypatch.setattr(pipeline, "backup_artifacts", fake_backup)
+    monkeypatch.setattr(pipeline, "restore_artifacts", fake_restore)
+    monkeypatch.setattr(pipeline.shutil, "copy2", fake_copy2)
+    monkeypatch.setattr(pipeline, "_write_artifacts", fake_write_artifacts)
+    monkeypatch.setattr(pipeline, "_build_master", fake_build_master)
+    monkeypatch.setattr(pipeline, "_compute_cost", fake_compute_cost)
+    monkeypatch.setattr(pipeline, "_report_main", fake_report)
+
+    result = pipeline.run_pipeline("invoice", tmp_xlsx)
+
+    assert result == FAKE_N
+
+    step_calls = [c[0] for c in calls]
+
+    # write_artifacts НЕ вызван (накладная не перестраивает леджер-parquet)
+    assert "write_artifacts" not in step_calls, "invoice НЕ должен вызывать write_artifacts (ledger-парсер)"
+
+    # build_master → compute_cost → report вызваны в порядке
+    assert "build_master" in step_calls
+    assert "compute_cost" in step_calls
+    assert "report" in step_calls
+    idx = {name: step_calls.index(name) for name in ("build_master", "compute_cost", "report")}
+    assert idx["build_master"] < idx["compute_cost"] < idx["report"]
+
+    # Файл скопирован в папку поступления товаров (с подпапкой или без)
+    copy_calls = [c for c in calls if c[0] == "copy2"]
+    assert len(copy_calls) == 1
+    assert "поступления товаров" in copy_calls[0][2]
+
+    # restore НЕ вызван
+    assert "restore" not in step_calls
+
+
+# ---------------------------------------------------------------------------
+# Test 4: invoice with rate marker → root folder (not в рублях/)
+# ---------------------------------------------------------------------------
+
+def test_invoice_with_rate_goes_to_root(tmp_path, monkeypatch):
+    """Накладная с маркером курса в имени → копируется в корень 'поступления товаров/',
+    НЕ в 'в рублях/'.
+    """
+    import bot.pipeline as pipeline
+
+    # Имя с маркером курса «103,79»
+    tmp_xlsx = tmp_path / "12 приход 103,79.xlsx"
+    tmp_xlsx.write_bytes(b"PK\x03\x04" + b"\x00" * 100)
+
+    calls = []
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", lambda p, ft: None)
+    monkeypatch.setattr(pipeline, "backup_artifacts", lambda ft: tmp_path / "bak")
+    monkeypatch.setattr(pipeline, "restore_artifacts", lambda bak: None)
+    monkeypatch.setattr(pipeline.shutil, "copy2", lambda s, d: calls.append(("copy2", str(s), str(d))))
+    monkeypatch.setattr(pipeline, "_write_artifacts", lambda path=None: (0, 0))
+    monkeypatch.setattr(pipeline, "_build_master", lambda: None)
+    monkeypatch.setattr(pipeline, "_compute_cost", lambda: None)
+    monkeypatch.setattr(pipeline, "_report_main", lambda: FAKE_N)
+
+    pipeline.run_pipeline("invoice", tmp_xlsx)
+
+    copy_calls = [c for c in calls if c[0] == "copy2"]
+    assert len(copy_calls) == 1
+    dst = copy_calls[0][2]
+    assert "поступления товаров" in dst
+    assert "в рублях" not in dst, "Накладная с курсом должна идти в корень, не в в рублях/"
+
+
+# ---------------------------------------------------------------------------
+# Test 5: unknown type → ValueError
+# ---------------------------------------------------------------------------
+
+def test_unknown_type(tmp_path, tmp_xlsx, monkeypatch):
+    """run_pipeline('bogus', tmp) → ValueError (type-branching: unknown явно отклонён)."""
+    import bot.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", lambda p, ft: None)
+    monkeypatch.setattr(pipeline, "backup_artifacts", lambda ft: tmp_path / "bak")
+
+    restore_called = []
+    monkeypatch.setattr(pipeline, "restore_artifacts", lambda bak: restore_called.append(True))
+
+    with pytest.raises(ValueError, match="Unknown file_type"):
+        pipeline.run_pipeline("bogus", tmp_xlsx)
+
+    # restore вызван при ошибке
+    assert restore_called, "restore_artifacts должен быть вызван при ValueError (unknown type)"
+
+
+# ---------------------------------------------------------------------------
+# Test 6: restore on pipeline error
+# ---------------------------------------------------------------------------
+
+def test_restore_on_pipeline_error(tmp_path, tmp_xlsx, monkeypatch):
+    """Если build_master.main падает → restore_artifacts вызван с bak,
+    исключение проброшено, report.main НЕ вызван (Sheet не трогается).
+    """
+    import bot.pipeline as pipeline
+
+    fake_bak = tmp_path / "bak"
+    restore_args = []
+    report_called = []
+
+    monkeypatch.setattr(pipeline, "validate_xlsx", lambda p, ft: None)
+    monkeypatch.setattr(pipeline, "backup_artifacts", lambda ft: fake_bak)
+    monkeypatch.setattr(pipeline, "restore_artifacts", lambda bak: restore_args.append(bak))
+    monkeypatch.setattr(pipeline.shutil, "copy2", lambda s, d: None)
+    monkeypatch.setattr(pipeline, "_write_artifacts", lambda path=None: (0, 0))
+    monkeypatch.setattr(pipeline, "_build_master", lambda: (_ for _ in ()).throw(RuntimeError("build failed")))
+    monkeypatch.setattr(pipeline, "_compute_cost", lambda: None)
+    monkeypatch.setattr(pipeline, "_report_main", lambda: report_called.append(True) or FAKE_N)
+
+    with pytest.raises(RuntimeError, match="build failed"):
+        pipeline.run_pipeline("ledger", tmp_xlsx)
+
+    # restore вызван с правильным аргументом
+    assert len(restore_args) == 1
+    assert restore_args[0] == fake_bak
+
+    # report НЕ вызван — Sheet не трогается до полного успеха
+    assert not report_called, "report.main НЕ должен быть вызван при ошибке до него"
