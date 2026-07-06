@@ -335,7 +335,7 @@ def test_restore_on_pipeline_error(tmp_path, tmp_xlsx, monkeypatch):
     monkeypatch.setattr(pipeline, "backup_artifacts", lambda ft, cfg: fake_bak)
     monkeypatch.setattr(pipeline, "restore_artifacts", lambda bak, cfg: restore_args.append(bak))
     monkeypatch.setattr(pipeline.shutil, "copy2", lambda s, d: None)
-    monkeypatch.setattr(pipeline, "_write_artifacts", lambda path=None: (0, 0))
+    monkeypatch.setattr(pipeline, "_write_artifacts", lambda path=None: (5, 3))  # n_sales>0 → проходит guard
     monkeypatch.setattr(pipeline, "_build_master", lambda: (_ for _ in ()).throw(RuntimeError("build failed")))
     monkeypatch.setattr(pipeline, "_compute_cost", lambda: None)
     monkeypatch.setattr(pipeline, "_report_main", lambda: report_called.append(True) or FAKE_N)
@@ -349,6 +349,32 @@ def test_restore_on_pipeline_error(tmp_path, tmp_xlsx, monkeypatch):
 
     # report НЕ вызван — Sheet не трогается до полного успеха
     assert not report_called, "report.main НЕ должен быть вызван при ошибке до него"
+
+
+def test_ledger_zero_sales_rejected(tmp_path, tmp_xlsx, monkeypatch):
+    """Вырожденный леджер (0 строк продаж) → понятная ValueError + restore,
+    БЕЗ тихой перезаписи отчёта нулями (баг 2026-07-06: файл без дат движений).
+    """
+    import bot.pipeline as pipeline
+
+    restore_called = []
+    report_called = []
+
+    monkeypatch.setattr(pipeline, "load_config", lambda: object())
+    monkeypatch.setattr(pipeline, "validate_xlsx", lambda p, ft: None)
+    monkeypatch.setattr(pipeline, "backup_artifacts", lambda ft, cfg: tmp_path / "bak")
+    monkeypatch.setattr(pipeline, "restore_artifacts", lambda bak, cfg: restore_called.append(True))
+    monkeypatch.setattr(pipeline.shutil, "copy2", lambda s, d: None)
+    monkeypatch.setattr(pipeline, "_write_artifacts", lambda path=None: (0, 954))  # 0 продаж
+    monkeypatch.setattr(pipeline, "_build_master", lambda: None)
+    monkeypatch.setattr(pipeline, "_compute_cost", lambda: None)
+    monkeypatch.setattr(pipeline, "_report_main", lambda: report_called.append(True) or 1)
+
+    with pytest.raises(ValueError, match="не содержит продаж"):
+        pipeline.run_pipeline("ledger", tmp_xlsx)
+
+    assert restore_called, "restore должен быть вызван при вырожденном леджере"
+    assert not report_called, "report НЕ должен вызываться — Sheet не трогается"
 
 
 # ---------------------------------------------------------------------------

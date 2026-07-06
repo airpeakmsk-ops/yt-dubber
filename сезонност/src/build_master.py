@@ -92,8 +92,12 @@ def build_master() -> tuple[pd.DataFrame, dict]:
 
     n_sales_in_spine = len(sale_eans & spine)
     n_stock_in_spine = len(stock_eans & spine)
-    coverage_pct_sales = round(100.0 * n_sales_in_spine / len(sale_eans), 2)
-    coverage_pct_stock = round(100.0 * n_stock_in_spine / len(stock_eans), 2)
+    # Guard деления на ноль: пустой набор продаж/остатков (напр. вырожденный/битый
+    # леджер без движений) → coverage 0.0, а не ZeroDivisionError с невнятным
+    # «float division by zero» у пользователя. Пустой набор продаж = сигнал проблемы
+    # с входным файлом (проверяется ниже отдельным guard'ом на n_sales==0).
+    coverage_pct_sales = round(100.0 * n_sales_in_spine / len(sale_eans), 2) if sale_eans else 0.0
+    coverage_pct_stock = round(100.0 * n_stock_in_spine / len(stock_eans), 2) if stock_eans else 0.0
 
     # --- master frame: приходы spine + left-joined остатки + sales link ---------
     master = _aggregate_prikhody(pri)
