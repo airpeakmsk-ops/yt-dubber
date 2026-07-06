@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 6
-current_plan: 06-04 complete → 06-05 next
+current_plan: 06-05 deployed (bot live) — design gap → plan 06-06 (incremental) next
 status: in_progress
-last_updated: "2026-06-30T00:00:00Z"
+last_updated: "2026-07-06T00:00:00Z"
 progress:
   total_phases: 6
   completed_phases: 3
@@ -187,8 +187,20 @@ None.
 
 ## Next Action
 
-Phase 6 Plans 01/02/03 COMPLETE. Следующий шаг: выполнить 06-04-PLAN.md (handlers + scheduler + main — BOT-01 приём файлов, BOT-04 еженедельный пинг, whitelist). bot/backup.py + bot/pipeline.py готовы и протестированы.
+**Phase 6 Plans 01–04 COMPLETE; 06-05 (деплой) выполнен — бот @skladetbot live на VPS.**
+Живой e2e (06-05 Task 4) выявил дизайн-разрыв: пайплайн леджера делает **full-replace**
+(пересобирает prodazhi целиком), а рабочий процесс пользователя — **инкрементальный**
+(шлёт только новый период, бот мержит). 1-месячный файл затёр историю; восстановлено из
+бэкапа, Google откатил пользователь.
+
+Попутные баги e2e исправлены и задеплоены: сигнатура backup_artifacts (config), пустая
+строка 1С после артикула, guard деления. Полный сьют 89 passed.
+
+**Следующий шаг: спланировать план 06-06 «Инкрементальное обновление леджера»** (решение
+пользователя). Подтверждённая merge-семантика + настройки выгрузки + открытые вопросы —
+в `.planning/phases/06-telegram/06-06-REQUIREMENTS.md`. Рекомендация: `/gsd:plan-phase 06`
+в СВЕЖЕМ контексте (`/clear`) — эта сессия перегружена. Merge вживую на проде НЕ делать.
 
 ---
 *STATE created: 2026-06-26*
-*Last updated: 2026-06-30 (session 13 — completed 06-02 backup/restore/validate, 77 tests green)*
+*Last updated: 2026-07-06 (session 14 — 06-05 деплой + e2e-фиксы; дизайн-разрыв → план 06-06)*
