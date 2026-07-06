@@ -9,9 +9,10 @@ run_pipeline(file_type, tmp_path) -> int
     other   : ValueError (type-branching: unknown явно отклонён — CODE_DOMAIN правило)
 
   Обёртка backup→try→restore-on-error:
-    - backup_artifacts(file_type)  до любых изменений
-    - restore_artifacts(bak)       при любом исключении; Sheet не трогается до полного успеха
-    - validate_xlsx(path, file_type) fail-closed ДО бэкапа
+    - backup_artifacts(file_type, config)  до любых изменений
+    - restore_artifacts(bak, config)       при любом исключении; Sheet не трогается до полного успеха
+    - validate_xlsx(path, file_type)       fail-closed ДО бэкапа
+    config берётся из load_config() (project_root для backup/restore — кросс-платформенно).
 
   GOOGLE_APPLICATION_CREDENTIALS выставлен из env/.env (через bot.config) ДО вызова report.main();
   Windows-fallback из sheets_client НЕ используется.
@@ -139,7 +140,10 @@ def run_pipeline(file_type: str, tmp_path: pathlib.Path) -> int:
     # Fail-closed: валидировать ДО любых изменений (backup/restore тоже не нужен при ошибке валидации).
     validate_xlsx(tmp_path, file_type)
 
-    bak = backup_artifacts(file_type)
+    # Config нужен backup/restore (project_root). Загружаем из env/.env (bot.config).
+    config = load_config()
+
+    bak = backup_artifacts(file_type, config)
     try:
         if file_type == "ledger":
             _run_ledger(tmp_path)
@@ -153,5 +157,5 @@ def run_pipeline(file_type: str, tmp_path: pathlib.Path) -> int:
         return _report_main()
 
     except Exception:
-        restore_artifacts(bak)
+        restore_artifacts(bak, config)
         raise
